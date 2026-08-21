@@ -1,0 +1,2 @@
+eligible_definition,eligible_n,baseline_fraud_rate,target_relative_reduction,target_fraud_rate,alpha_two_sided,power,required_n_per_arm,primary_metric,guardrail_note
+validation transactions with calibrated risk in review band,163,0.09202453987730061,0.25,0.06901840490797545,0.05,0.8,2195,fraud occurrence among review-band transactions,legitimate-customer completion/abandonment needs real product event data and is not simulated here

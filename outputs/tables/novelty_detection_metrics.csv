@@ -1,0 +1,5 @@
+detector,known_fraud_recall,novel_fraud_recall,legit_flag_rate
+supervised_1pct_fpr,0.5,0.0,0.013716697441308361
+isolation_forest_1pct_fpr,0.0,0.12903225806451613,0.0081772619361646
+tail_velocity_1pct_fpr,0.0,0.22580645161290322,0.0055394355051437616
+hybrid_supervised_tail,0.5,0.22580645161290322,0.019256132946452124

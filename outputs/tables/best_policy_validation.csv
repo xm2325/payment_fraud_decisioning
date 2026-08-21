@@ -1,0 +1,2 @@
+review_threshold,block_threshold,fraud_value_prevented,fraud_value_prevented_rate,legit_friction_rate,review_rate,block_rate,residual_fraud_loss,operational_and_friction_cost,total_policy_cost
+0.03,0.35,19441.589638558973,0.7965368739743494,0.039072346861608265,0.040638244826726504,0.006482174021441037,4966.055850035249,379.25,5345.305850035249

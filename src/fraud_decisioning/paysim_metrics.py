@@ -14,6 +14,8 @@ def binary_metrics(y, p, amount, threshold: float) -> dict:
     y = np.asarray(y, dtype=int)
     p = np.asarray(p, dtype=float)
     amount = np.asarray(amount, dtype=float)
+    if np.any(~np.isfinite(p)) or np.any((p < 0) | (p > 1)):
+        raise ValueError("binary_metrics expects finite probabilities in [0, 1]; use rule_metrics for rule/ranking scores")
     pred = p >= threshold
     fraud = y == 1
     legit = ~fraud
@@ -44,3 +46,5 @@ def rule_metrics(y, rule, amount) -> dict:
         "fraud_value_recall": float(amount[rule & fraud].sum() / amount[fraud].sum()),
         "alerts": int(rule.sum()),
     }
+
+
