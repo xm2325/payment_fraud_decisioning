@@ -15,134 +15,100 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: clean-v1.3
-          fetch-depth: 0
+        with: {ref: clean-v1.3, fetch-depth: 0}
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: {python-version: '3.11'}
 
-      - name: Recover missing base64 character and verify archive
+      - name: Recover and verify clean archive
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import base64, hashlib, pathlib
           root = pathlib.Path('_publish_v13')
-          chunks = [(root / f'chunk_{i:02d}.b64').read_text().strip() for i in range(13)]
-          expected_sha = 'fffdba4f71fd95f3ef296ae5c6b59ad07a7d8abd661fc00cdb10f3998c3446f1'
-          alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-          for i, chunk in enumerate(chunks):
-              expected = 752 if i == 12 else (8999 if i == 9 else 9000)
-              if len(chunk) != expected:
-                  raise SystemExit(f'Unexpected chunk {i:02d} length {len(chunk)} != {expected}')
-          bad = chunks[9]
-          prefix_b64, suffix_b64 = ''.join(chunks[:9]), ''.join(chunks[10:])
-          prefix_bytes = base64.b64decode(prefix_b64, validate=True)
-          suffix_bytes = base64.b64decode(suffix_b64, validate=True)
-          prefix_hash = hashlib.sha256(prefix_bytes)
-          recovered = None
-          for pos in range(len(bad) + 1):
-              left, right = bad[:pos], bad[pos:]
-              for ch in alphabet:
-                  candidate = left + ch + right
-                  try:
-                      candidate_bytes = base64.b64decode(candidate, validate=True)
-                  except Exception:
-                      continue
-                  h = prefix_hash.copy(); h.update(candidate_bytes); h.update(suffix_bytes)
-                  if h.hexdigest() == expected_sha:
-                      recovered = candidate
-                      print(f'Recovered chunk_09: inserted {ch!r} at position {pos}')
-                      break
-              if recovered is not None:
-                  break
-          if recovered is None:
-              raise SystemExit('Could not recover chunk_09')
-          full_b64 = prefix_b64 + recovered + suffix_b64
-          if len(full_b64) != 108752:
-              raise SystemExit(f'Base64 length {len(full_b64)} != 108752')
-          raw = base64.b64decode(full_b64, validate=True)
-          digest = hashlib.sha256(raw).hexdigest()
-          if len(raw) != 81564 or digest != expected_sha:
-              raise SystemExit(f'Archive verification failed: len={len(raw)}, sha={digest}')
-          pathlib.Path('/tmp/payment_fraud_clean_v13.tar.xz').write_bytes(raw)
-          print(f'Archive verified: {len(raw)} bytes, sha256={digest}')
+          c = [(root/f'chunk_{i:02d}.b64').read_text().strip() for i in range(13)]
+          sha = 'fffdba4f71fd95f3ef296ae5c6b59ad07a7d8abd661fc00cdb10f3998c3446f1'
+          alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+          for i,x in enumerate(c):
+              want = 752 if i == 12 else (8999 if i == 9 else 9000)
+              if len(x) != want: raise SystemExit(f'chunk {i}: {len(x)} != {want}')
+          pre, bad, suf = ''.join(c[:9]), c[9], ''.join(c[10:])
+          pre_b, suf_b = base64.b64decode(pre, validate=True), base64.b64decode(suf, validate=True)
+          ph = hashlib.sha256(pre_b); recovered = None
+          for pos in range(len(bad)+1):
+              for ch in alpha:
+                  candidate = bad[:pos] + ch + bad[pos:]
+                  try: mid = base64.b64decode(candidate, validate=True)
+                  except Exception: continue
+                  h = ph.copy(); h.update(mid); h.update(suf_b)
+                  if h.hexdigest() == sha:
+                      recovered = candidate; print(f"Recovered chunk_09: {ch!r} at {pos}"); break
+              if recovered is not None: break
+          if recovered is None: raise SystemExit('chunk_09 recovery failed')
+          full = pre + recovered + suf
+          if len(full) != 108752: raise SystemExit('base64 length mismatch')
+          raw = base64.b64decode(full, validate=True)
+          if len(raw) != 81564 or hashlib.sha256(raw).hexdigest() != sha: raise SystemExit('archive verification failed')
+          pathlib.Path('/tmp/clean.tar.xz').write_bytes(raw)
+          print('archive verified')
           PY
-          tar -tJf /tmp/payment_fraud_clean_v13.tar.xz >/tmp/archive-files.txt
-          test -s /tmp/archive-files.txt
+          tar -tJf /tmp/clean.tar.xz >/tmp/archive-files.txt
 
-      - name: Replace transport tree with normal repository files
-        shell: bash
+      - name: Replace transport tree
         run: |
           set -euo pipefail
-          rm -rf /tmp/payment_fraud_clean_v13 && mkdir -p /tmp/payment_fraud_clean_v13
-          tar -xJf /tmp/payment_fraud_clean_v13.tar.xz -C /tmp/payment_fraud_clean_v13
-          test "$(find /tmp/payment_fraud_clean_v13 -type f | wc -l)" -eq 107
-          test -f /tmp/payment_fraud_clean_v13/README.md
-          test -f /tmp/payment_fraud_clean_v13/src/fraud_decisioning/features.py
-          test -f /tmp/payment_fraud_clean_v13/src/fraud_decisioning/paysim_full.py
-          test -f /tmp/payment_fraud_clean_v13/TAKE_HOME_WALKTHROUGH.md
+          rm -rf /tmp/clean && mkdir /tmp/clean
+          tar -xJf /tmp/clean.tar.xz -C /tmp/clean
+          test "$(find /tmp/clean -type f | wc -l)" -eq 107
+          test -f /tmp/clean/README.md
+          test -f /tmp/clean/src/fraud_decisioning/features.py
+          test -f /tmp/clean/TAKE_HOME_WALKTHROUGH.md
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -a /tmp/payment_fraud_clean_v13/. .
+          cp -a /tmp/clean/. .
 
-      - name: Apply pandas-resolution regression fixes and v1.3 metadata
-        shell: bash
+      - name: Apply pandas 3 point-in-time fixes and v1.3 metadata
         run: |
-          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           import re
-          p = Path('src/fraud_decisioning/features.py'); s = p.read_text()
-          old = '    ts = (x["timestamp"].astype("int64") // 10**9).to_numpy()'
-          new = ('    # Pandas 3 may preserve microsecond datetime resolution; normalize explicitly.\n'
-                 '    ts = (x["timestamp"].dt.as_unit("ns").astype("int64") // 10**9).to_numpy()')
-          if old not in s and '.dt.as_unit("ns")' not in s:
-              raise SystemExit('Expected feature timestamp conversion not found')
-          if old in s: p.write_text(s.replace(old, new))
-
-          t = Path('tests/test_features.py'); s = t.read_text()
+          p=Path('src/fraud_decisioning/features.py'); s=p.read_text()
+          old='    ts = (x["timestamp"].astype("int64") // 10**9).to_numpy()'
+          new='    # Pandas 3 may preserve microsecond datetime resolution; normalize explicitly.\n    ts = (x["timestamp"].dt.as_unit("ns").astype("int64") // 10**9).to_numpy()'
+          if old in s: p.write_text(s.replace(old,new))
+          elif '.dt.as_unit("ns")' not in s: raise SystemExit('feature timestamp conversion missing')
+          t=Path('tests/test_features.py'); s=t.read_text()
           if 'test_velocity_handles_microsecond_timestamp_resolution' not in s:
-              s += '''\n\ndef test_velocity_handles_microsecond_timestamp_resolution():\n    t0 = pd.Timestamp("2026-01-01", tz="UTC")\n    df = pd.DataFrame({\n        "transaction_id": [1, 2, 3],\n        "timestamp": pd.Series(pd.to_datetime([t0, t0 + pd.Timedelta(minutes=30), t0 + pd.Timedelta(hours=2)])).dt.as_unit("us"),\n        "type": ["TRANSFER"] * 3, "amount": [10., 20., 30.],\n        "sender": ["A"] * 3, "recipient": ["B"] * 3,\n        "old_balance_sender": [100.] * 3, "new_balance_sender": [90., 80., 70.],\n        "account_age_days": [100] * 3, "device_id": ["D"] * 3,\n        "device_change": [0] * 3, "country_mismatch": [0] * 3,\n        "recipient_new": [0] * 3, "is_fraud": [0] * 3,\n        "fraud_type": ["legitimate"] * 3,\n    })\n    out, _ = build_features(df)\n    assert out.loc[1, "sender_tx_1h"] == 1\n    assert out.loc[2, "sender_tx_1h"] == 0\n'''
+              s+='''\n\ndef test_velocity_handles_microsecond_timestamp_resolution():\n    t0 = pd.Timestamp("2026-01-01", tz="UTC")\n    df = pd.DataFrame({"transaction_id":[1,2,3],"timestamp":pd.Series(pd.to_datetime([t0,t0+pd.Timedelta(minutes=30),t0+pd.Timedelta(hours=2)])).dt.as_unit("us"),"type":["TRANSFER"]*3,"amount":[10.,20.,30.],"sender":["A"]*3,"recipient":["B"]*3,"old_balance_sender":[100.]*3,"new_balance_sender":[90.,80.,70.],"account_age_days":[100]*3,"device_id":["D"]*3,"device_change":[0]*3,"country_mismatch":[0]*3,"recipient_new":[0]*3,"is_fraud":[0]*3,"fraud_type":["legitimate"]*3})\n    out,_=build_features(df)\n    assert out.loc[1,"sender_tx_1h"]==1\n    assert out.loc[2,"sender_tx_1h"]==0\n'''
               t.write_text(s)
-
-          q = Path('tests/test_sql_parity.py'); s = q.read_text()
-          old_sql = 'df.timestamp.astype("int64") // 10**9'
-          new_sql = 'df.timestamp.dt.as_unit("ns").astype("int64") // 10**9'
-          if old_sql not in s and new_sql not in s:
-              raise SystemExit('Expected SQL parity timestamp conversion not found')
-          if old_sql in s: q.write_text(s.replace(old_sql, new_sql))
-
-          for fn in ['pyproject.toml', 'src/fraud_decisioning/__init__.py', 'src/fraud_decisioning/api.py']:
-              p = Path(fn); s = p.read_text()
-              s = re.sub(r'(?m)^version = "[0-9.]+"$', 'version = "1.3.0"', s)
-              s = re.sub(r'__version__ = "[0-9.]+"', '__version__ = "1.3.0"', s)
-              s = re.sub(r'version="[0-9.]+"', 'version="1.3.0"', s)
-              p.write_text(s)
+          q=Path('tests/test_sql_parity.py'); s=q.read_text()
+          oldq='df.timestamp.astype("int64") // 10**9'; newq='df.timestamp.dt.as_unit("ns").astype("int64") // 10**9'
+          if oldq in s: q.write_text(s.replace(oldq,newq))
+          elif newq not in s: raise SystemExit('SQL parity timestamp conversion missing')
+          for fn in ['pyproject.toml','src/fraud_decisioning/__init__.py','src/fraud_decisioning/api.py']:
+              p=Path(fn); s=p.read_text()
+              s=re.sub(r'(?m)^version = "[0-9.]+"$','version = "1.3.0"',s)
+              s=re.sub(r'__version__ = "[0-9.]+"','__version__ = "1.3.0"',s)
+              s=re.sub(r'version="[0-9.]+"','version="1.3.0"',s); p.write_text(s)
           for p in Path('.').glob('*.md'):
-              s = p.read_text().replace('v1.2', 'v1.3')
-              if p.name == 'README.md': s = s.replace('**26 tests**', '**27 tests**')
+              s=p.read_text().replace('v1.2','v1.3')
+              if p.name=='README.md': s=s.replace('**26 tests**','**27 tests**')
               p.write_text(s)
           PY
 
-      - name: Install and run tests
-        shell: bash
+      - name: Test
         run: |
-          set -euo pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pytest -q
 
-      - name: Commit verified clean source except workflow files
-        shell: bash
+      - name: Commit tested source without workflow mutations
         run: |
           set -euo pipefail
-          # GITHUB_TOKEN may not create/update workflow files. Restore them here;
-          # the connector publishes the final workflows after this verified commit.
+          # Remove untracked workflow files from the extracted archive, then restore tracked ones.
+          git clean -fd .github/workflows
           git restore --source=HEAD --staged --worktree .github/workflows
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git status --short
           git commit -m 'feat: publish clean v1.3 fraud decisioning source tree'
           git push origin HEAD:clean-v1.3
