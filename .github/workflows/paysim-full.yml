@@ -8,12 +8,14 @@ on:
       - '.github/workflows/paysim-full.yml'
       - 'scripts/run_paysim_full.py'
       - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_features.py'
   pull_request:
     branches: [main]
     paths:
       - '.github/workflows/paysim-full.yml'
       - 'scripts/run_paysim_full.py'
       - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_features.py'
 
 permissions:
   contents: write
@@ -62,6 +64,7 @@ jobs:
       - name: Show aggregate results
         run: |
           cat results/paysim_full/summary.json
+          cat results/paysim_full/model_ablation.csv
           cat results/paysim_full/operating_points.csv
 
       - uses: actions/upload-artifact@v4
