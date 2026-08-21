@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/recover-source.yml'
+      - '_bootstrap_xz/READY'
 
 permissions:
   contents: write
