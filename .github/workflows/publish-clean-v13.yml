@@ -3,8 +3,7 @@ name: Publish clean v1.3 source
 on:
   push:
     branches: [clean-v1.3]
-    paths:
-      - '.github/workflows/publish-clean-v13.yml'
+    paths: ['.github/workflows/publish-clean-v13.yml']
   pull_request:
     branches: [main]
 
@@ -19,41 +18,29 @@ jobs:
         with:
           ref: clean-v1.3
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Recover the single missing base64 character and verify archive
+      - name: Recover missing base64 character and verify archive
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import base64
-          import hashlib
-          import pathlib
-
+          import base64, hashlib, pathlib
           root = pathlib.Path('_publish_v13')
           chunks = [(root / f'chunk_{i:02d}.b64').read_text().strip() for i in range(13)]
-          expected_b64_len = 108752
-          expected_raw_len = 81564
           expected_sha = 'fffdba4f71fd95f3ef296ae5c6b59ad07a7d8abd661fc00cdb10f3998c3446f1'
           alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
           for i, chunk in enumerate(chunks):
-              expected = 752 if i == 12 else 9000
-              if i == 9:
-                  expected = 8999
+              expected = 752 if i == 12 else (8999 if i == 9 else 9000)
               if len(chunk) != expected:
                   raise SystemExit(f'Unexpected chunk {i:02d} length {len(chunk)} != {expected}')
-
           bad = chunks[9]
-          prefix_b64 = ''.join(chunks[:9])
-          suffix_b64 = ''.join(chunks[10:])
+          prefix_b64, suffix_b64 = ''.join(chunks[:9]), ''.join(chunks[10:])
           prefix_bytes = base64.b64decode(prefix_b64, validate=True)
           suffix_bytes = base64.b64decode(suffix_b64, validate=True)
           prefix_hash = hashlib.sha256(prefix_bytes)
-
           recovered = None
           for pos in range(len(bad) + 1):
               left, right = bad[:pos], bad[pos:]
@@ -63,50 +50,78 @@ jobs:
                       candidate_bytes = base64.b64decode(candidate, validate=True)
                   except Exception:
                       continue
-                  h = prefix_hash.copy()
-                  h.update(candidate_bytes)
-                  h.update(suffix_bytes)
+                  h = prefix_hash.copy(); h.update(candidate_bytes); h.update(suffix_bytes)
                   if h.hexdigest() == expected_sha:
                       recovered = candidate
                       print(f'Recovered chunk_09: inserted {ch!r} at position {pos}')
                       break
               if recovered is not None:
                   break
-
           if recovered is None:
-              raise SystemExit('Could not recover chunk_09 from the expected SHA-256')
-
+              raise SystemExit('Could not recover chunk_09')
           full_b64 = prefix_b64 + recovered + suffix_b64
-          if len(full_b64) != expected_b64_len:
-              raise SystemExit(f'Base64 length {len(full_b64)} != {expected_b64_len}')
+          if len(full_b64) != 108752:
+              raise SystemExit(f'Base64 length {len(full_b64)} != 108752')
           raw = base64.b64decode(full_b64, validate=True)
-          if len(raw) != expected_raw_len:
-              raise SystemExit(f'Archive length {len(raw)} != {expected_raw_len}')
           digest = hashlib.sha256(raw).hexdigest()
-          if digest != expected_sha:
-              raise SystemExit(f'SHA mismatch: {digest}')
+          if len(raw) != 81564 or digest != expected_sha:
+              raise SystemExit(f'Archive verification failed: len={len(raw)}, sha={digest}')
           pathlib.Path('/tmp/payment_fraud_clean_v13.tar.xz').write_bytes(raw)
           print(f'Archive verified: {len(raw)} bytes, sha256={digest}')
           PY
-          tar -tJf /tmp/payment_fraud_clean_v13.tar.xz > /tmp/archive-files.txt
+          tar -tJf /tmp/payment_fraud_clean_v13.tar.xz >/tmp/archive-files.txt
           test -s /tmp/archive-files.txt
 
       - name: Replace transport tree with normal repository files
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/payment_fraud_clean_v13
-          mkdir -p /tmp/payment_fraud_clean_v13
+          rm -rf /tmp/payment_fraud_clean_v13 && mkdir -p /tmp/payment_fraud_clean_v13
           tar -xJf /tmp/payment_fraud_clean_v13.tar.xz -C /tmp/payment_fraud_clean_v13
           test "$(find /tmp/payment_fraud_clean_v13 -type f | wc -l)" -eq 107
           test -f /tmp/payment_fraud_clean_v13/README.md
+          test -f /tmp/payment_fraud_clean_v13/src/fraud_decisioning/features.py
           test -f /tmp/payment_fraud_clean_v13/src/fraud_decisioning/paysim_full.py
           test -f /tmp/payment_fraud_clean_v13/TAKE_HOME_WALKTHROUGH.md
-          test ! -e /tmp/payment_fraud_clean_v13/_bootstrap
-          test ! -e /tmp/payment_fraud_clean_v13/_bootstrap_xz
-          test ! -e /tmp/payment_fraud_clean_v13/_publish_v13
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -a /tmp/payment_fraud_clean_v13/. .
+
+      - name: Apply pandas-resolution regression fix and v1.3 metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('src/fraud_decisioning/features.py')
+          s = p.read_text()
+          old = '    ts = (x["timestamp"].astype("int64") // 10**9).to_numpy()'
+          new = ('    # Pandas 3 may preserve microsecond datetime resolution; normalize explicitly.\n'
+                 '    ts = (x["timestamp"].dt.as_unit("ns").astype("int64") // 10**9).to_numpy()')
+          if old not in s and '.dt.as_unit("ns")' not in s:
+              raise SystemExit('Expected timestamp conversion not found')
+          if old in s:
+              p.write_text(s.replace(old, new))
+
+          t = Path('tests/test_features.py')
+          s = t.read_text()
+          marker = 'test_velocity_handles_microsecond_timestamp_resolution'
+          if marker not in s:
+              s += '''\n\ndef test_velocity_handles_microsecond_timestamp_resolution():\n    t0 = pd.Timestamp("2026-01-01", tz="UTC")\n    df = pd.DataFrame({\n        "transaction_id": [1, 2, 3],\n        "timestamp": pd.Series(pd.to_datetime([t0, t0 + pd.Timedelta(minutes=30), t0 + pd.Timedelta(hours=2)])).dt.as_unit("us"),\n        "type": ["TRANSFER"] * 3, "amount": [10., 20., 30.],\n        "sender": ["A"] * 3, "recipient": ["B"] * 3,\n        "old_balance_sender": [100.] * 3, "new_balance_sender": [90., 80., 70.],\n        "account_age_days": [100] * 3, "device_id": ["D"] * 3,\n        "device_change": [0] * 3, "country_mismatch": [0] * 3,\n        "recipient_new": [0] * 3, "is_fraud": [0] * 3,\n        "fraud_type": ["legitimate"] * 3,\n    })\n    out, _ = build_features(df)\n    assert out.loc[1, "sender_tx_1h"] == 1\n    assert out.loc[2, "sender_tx_1h"] == 0\n'''
+              t.write_text(s)
+
+          for fn in ['pyproject.toml', 'src/fraud_decisioning/__init__.py', 'src/fraud_decisioning/api.py']:
+              p = Path(fn); s = p.read_text()
+              s = re.sub(r'(?m)^version = "[0-9.]+"$', 'version = "1.3.0"', s)
+              s = re.sub(r'__version__ = "[0-9.]+"', '__version__ = "1.3.0"', s)
+              s = re.sub(r'version="[0-9.]+"', 'version="1.3.0"', s)
+              p.write_text(s)
+          for p in Path('.').glob('*.md'):
+              s = p.read_text().replace('v1.2', 'v1.3')
+              if p.name == 'README.md':
+                  s = s.replace('**26 tests**', '**27 tests**')
+              p.write_text(s)
+          PY
 
       - name: Install and run tests
         shell: bash
@@ -116,8 +131,7 @@ jobs:
           pip install -r requirements.txt
           pytest -q
 
-      - name: Commit clean source tree
-        if: github.event_name == 'push'
+      - name: Commit verified clean source to PR branch
         shell: bash
         run: |
           set -euo pipefail
