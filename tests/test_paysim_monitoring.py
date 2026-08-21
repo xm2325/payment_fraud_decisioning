@@ -4,6 +4,9 @@ import pandas as pd
 from fraud_decisioning.paysim_monitoring import (
     future_budget_windows,
     locked_threshold_drift,
+    ranked_capacity_frontier,
+    ranked_capacity_metrics,
+    ranked_capacity_windows,
     recipient_intensity_score,
     recipient_signal_audit,
 )
@@ -36,6 +39,51 @@ def test_future_budget_windows_are_contiguous():
     assert out[["step_min", "step_max"]].values.tolist() == [[1, 2], [3, 4], [5, 6]]
 
 
+def test_ranked_capacity_enforces_exact_total_budget_with_score_ties():
+    n = 10_000
+    y = np.zeros(n, dtype=int)
+    y[[2, 9]] = 1
+    score = np.zeros(n, dtype=float)
+    score[:100] = 0.9
+    amount = np.ones(n)
+    event_key = np.arange(n, dtype=np.uint64)[::-1]
+    out = ranked_capacity_metrics(y, score, amount, event_key, alerts_per_10k=50)
+    assert out["capacity_n"] == 50
+    assert out["alerts"] == 50
+    assert out["actual_alerts_per_10k"] == 50.0
+    assert out["boundary_tie_n"] == 100
+    assert out["boundary_tie_selected_n"] == 50
+    assert out["tie_breaker"] == "stable_non_label_event_key"
+
+
+def test_ranked_capacity_tie_break_does_not_use_labels_or_amount():
+    y_a = np.array([1, 0, 0, 0])
+    y_b = np.array([0, 0, 0, 1])
+    score = np.ones(4)
+    amount_a = np.array([999, 1, 1, 1], dtype=float)
+    amount_b = amount_a[::-1]
+    event_key = np.array([40, 10, 20, 30], dtype=np.uint64)
+    out_a = ranked_capacity_metrics(y_a, score, amount_a, event_key, alerts_per_10k=5000)
+    out_b = ranked_capacity_metrics(y_b, score, amount_b, event_key, alerts_per_10k=5000)
+    assert out_a["alerts"] == out_b["alerts"] == 2
+    assert out_a["boundary_tie_selected_n"] == out_b["boundary_tie_selected_n"] == 2
+
+
+def test_ranked_capacity_frontier_and_windows():
+    step = np.repeat(np.arange(1, 7), 100)
+    n = len(step)
+    y = np.zeros(n, dtype=int)
+    y[::100] = 1
+    score = np.linspace(0, 1, n)
+    amount = np.ones(n)
+    event_key = np.arange(n, dtype=np.uint64)
+    frontier = ranked_capacity_frontier(y, score, amount, event_key, budgets_per_10k=(100, 200))
+    assert frontier.target_alerts_per_10k.tolist() == [100.0, 200.0]
+    windows = ranked_capacity_windows(step, y, score, amount, event_key, alerts_per_10k=1000, n_windows=3)
+    assert windows[["step_min", "step_max"]].values.tolist() == [[1, 2], [3, 4], [5, 6]]
+    assert (windows.actual_alerts_per_10k == 1000.0).all()
+
+
 def test_recipient_intensity_score_is_monotone_for_higher_activity():
     df = pd.DataFrame({
         "recipient_fanin_24h": [1.0, 10.0],
@@ -66,3 +114,4 @@ def test_recipient_signal_thresholds_are_validation_selected():
         "recipient_intensity_score",
     }
     assert (out.target_validation_legit_flag_rate == 0.25).all()
+    assert "validation_actual_legit_flag_rate" in out.columns
