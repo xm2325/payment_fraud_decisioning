@@ -1,0 +1,43 @@
+name: Publish v1.1 source tree
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '_bootstrap_v11/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Reassemble and verify source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat _bootstrap_v11/chunk_*.b64 > /tmp/payment_fraud_v11_source.b64
+          base64 --decode /tmp/payment_fraud_v11_source.b64 > /tmp/payment_fraud_v11_source.tar.xz
+          echo 'df452ff276475667f13f6402bd046daf54b6a91b9981a1901c3da005a7bfcd69  /tmp/payment_fraud_v11_source.tar.xz' | sha256sum -c -
+          tar -tJf /tmp/payment_fraud_v11_source.tar.xz >/tmp/source_files.txt
+          tar -xJf /tmp/payment_fraud_v11_source.tar.xz -C .
+
+      - name: Commit normal repository tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -rf _bootstrap_v11
+          rm -f .github/workflows/source-bootstrap.yml
+          git rm -r --cached --ignore-unmatch _bootstrap_v11 .github/workflows/source-bootstrap.yml
+          git add -- .github .gitignore APPLICATION_NOTES.md DATA_PROVENANCE.md Dockerfile EXPERIMENT_DESIGN.md MODEL_CARD.md PAYSIM_BENCHMARK.md README.md RESULTS.md ROLE_ALIGNMENT.md SYSTEM_DESIGN.md pyproject.toml requirements.txt scripts sql src tests data/raw/.gitkeep data/processed/.gitkeep results/paysim_full/.gitkeep
+          git diff --cached --stat
+          git commit -m 'feat: publish v1.1 fraud decisioning source tree'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
