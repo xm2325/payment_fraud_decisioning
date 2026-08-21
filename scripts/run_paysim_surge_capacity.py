@@ -29,7 +29,9 @@ from fraud_decisioning.paysim_routing_profiles import (
     select_profiles,
 )
 from fraud_decisioning.paysim_surge_capacity import (
+    DEFAULT_TRIGGER_GRID,
     evaluate_surge_windows,
+    surge_trigger_sensitivity,
     validation_tail_reference,
 )
 
@@ -110,6 +112,22 @@ def main() -> None:
     )
     windows.to_csv(out_dir / "surge_capacity_windows.csv", index=False)
 
+    sensitivity = surge_trigger_sensitivity(
+        test.step,
+        test.is_fraud,
+        future_probability,
+        future_priority,
+        test.amount,
+        test.event_key,
+        tail_threshold=tail_threshold,
+        validation_tail_rate=validation_tail_rate,
+        baseline_alerts_per_10k=50,
+        surge_alerts_per_10k=100,
+        trigger_multipliers=DEFAULT_TRIGGER_GRID,
+        n_windows=3,
+    )
+    sensitivity.to_csv(out_dir / "surge_trigger_sensitivity.csv", index=False)
+
     comparison = []
     for period in windows.period.unique():
         fixed = windows[(windows.period == period) & (windows.policy == "fixed_baseline")].iloc[0]
@@ -125,6 +143,17 @@ def main() -> None:
             "fraud_recall_delta": float(surge.recall - fixed.recall),
             "fraud_value_recall_delta": float(surge.fraud_value_recall - fixed.fraud_value_recall),
         })
+
+    sensitivity_summary = []
+    for trigger in DEFAULT_TRIGGER_GRID:
+        rows = sensitivity[sensitivity.trigger_multiplier == trigger]
+        sensitivity_summary.append({
+            "trigger_multiplier": float(trigger),
+            "triggered_windows": int(rows.surge_triggered.sum()),
+            "added_review_slots": int(rows.added_review_slots.sum()),
+            "triggered_periods": rows.loc[rows.surge_triggered, "period"].tolist(),
+        })
+
     with open(out_dir / "surge_summary.json", "w") as f:
         json.dump(_json_safe({
             "audit": audit,
@@ -134,14 +163,17 @@ def main() -> None:
             "tail_quantile": 0.995,
             "validation_tail_threshold": tail_threshold,
             "validation_actual_tail_rate": validation_tail_rate,
-            "trigger_multiplier": 1.5,
+            "reference_trigger_multiplier": 1.5,
+            "trigger_sensitivity_grid": list(DEFAULT_TRIGGER_GRID),
             "baseline_alerts_per_10k": 50,
             "surge_alerts_per_10k": 100,
-            "window_comparison": comparison,
+            "window_comparison_at_reference_trigger": comparison,
+            "trigger_sensitivity_summary": sensitivity_summary,
             "runtime_seconds": float(time.time() - started),
             "boundaries": [
                 "The surge trigger uses model-score load only; future fraud labels are not used to choose capacity.",
-                "The 0.5% tail, 1.5x trigger and 50-to-100 capacity step are pre-specified stress-test assumptions, not Moniepoint staffing rules.",
+                "The 0.5% tail, 1.5x reference trigger, 1.5/2.0/2.5 sensitivity grid and 50-to-100 capacity step are pre-specified stress-test assumptions, not Moniepoint staffing rules.",
+                "Trigger sensitivity is reported as governance sensitivity; no future outcome is used to select an optimal trigger.",
                 "The routing alpha is selected on validation before future evaluation.",
                 "Increasing review capacity is an operational scenario, not a claim that additional analysts are instantly available.",
                 "PaySim is synthetic mobile-money data; reported changes are benchmark evidence, not prevented-loss or production impact."
