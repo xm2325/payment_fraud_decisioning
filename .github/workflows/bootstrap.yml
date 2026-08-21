@@ -1,0 +1,36 @@
+name: Bootstrap v1.0 source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '_bootstrap/payment_fraud_v1_source.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unpack source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode _bootstrap/payment_fraud_v1_source.b64 > /tmp/payment_fraud_v1_source.zip
+          unzip -o /tmp/payment_fraud_v1_source.zip -d .
+          rm -rf _bootstrap
+          rm -f .github/workflows/bootstrap.yml
+      - name: Commit normal repository tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r --cached --ignore-unmatch _bootstrap .github/workflows/bootstrap.yml
+          git add -- .github .gitignore APPLICATION_NOTES.md DATA_PROVENANCE.md Dockerfile EXPERIMENT_DESIGN.md MODEL_CARD.md README.md RESULTS.md ROLE_ALIGNMENT.md SYSTEM_DESIGN.md pyproject.toml requirements.txt scripts sql src tests data/raw/.gitkeep data/processed/.gitkeep
+          git commit -m 'feat: publish v1.0 fraud decisioning system'
+          git push origin HEAD:main
