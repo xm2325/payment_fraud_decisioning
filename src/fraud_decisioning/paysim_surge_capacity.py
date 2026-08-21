@@ -8,6 +8,9 @@ import pandas as pd
 from .paysim_monitoring import ranked_capacity_metrics
 
 
+DEFAULT_TRIGGER_GRID = (1.5, 2.0, 2.5)
+
+
 def validation_tail_reference(
     probability: Sequence[float],
     *,
@@ -122,4 +125,68 @@ def evaluate_surge_windows(
         }
         rows.append({"policy": "fixed_baseline", **common, **fixed})
         rows.append({"policy": "score_tail_surge", **common, **adaptive})
+    return pd.DataFrame(rows)
+
+
+def surge_trigger_sensitivity(
+    step: Sequence[int],
+    y: Sequence[int],
+    probability: Sequence[float],
+    priority_score: Sequence[float],
+    amount: Sequence[float],
+    event_key: Sequence[int],
+    *,
+    tail_threshold: float,
+    validation_tail_rate: float,
+    baseline_alerts_per_10k: float = 50,
+    surge_alerts_per_10k: float = 100,
+    trigger_multipliers: Sequence[float] = DEFAULT_TRIGGER_GRID,
+    n_windows: int = 3,
+) -> pd.DataFrame:
+    """Evaluate a pre-declared trigger grid without selecting a threshold on future outcomes.
+
+    Future fraud labels are used only to score the consequence of each already-specified
+    governance rule. The output is a sensitivity table, not an optimisation result.
+    """
+    rows: list[dict] = []
+    for trigger in trigger_multipliers:
+        evaluated = evaluate_surge_windows(
+            step,
+            y,
+            probability,
+            priority_score,
+            amount,
+            event_key,
+            tail_threshold=tail_threshold,
+            validation_tail_rate=validation_tail_rate,
+            baseline_alerts_per_10k=baseline_alerts_per_10k,
+            surge_alerts_per_10k=surge_alerts_per_10k,
+            trigger_multiplier=float(trigger),
+            n_windows=n_windows,
+        )
+        for period in evaluated.period.unique():
+            fixed = evaluated[
+                (evaluated.period == period) & (evaluated.policy == "fixed_baseline")
+            ].iloc[0]
+            adaptive = evaluated[
+                (evaluated.period == period) & (evaluated.policy == "score_tail_surge")
+            ].iloc[0]
+            rows.append({
+                "trigger_multiplier": float(trigger),
+                "period": str(period),
+                "score_tail_multiplier_vs_validation": float(
+                    adaptive.score_tail_multiplier_vs_validation
+                ),
+                "surge_triggered": bool(adaptive.surge_triggered),
+                "selected_alerts_per_10k": float(adaptive.target_alerts_per_10k),
+                "added_review_slots": int(adaptive.alerts - fixed.alerts),
+                "precision": float(adaptive.precision),
+                "fraud_recall": float(adaptive.recall),
+                "fraud_value_recall": float(adaptive.fraud_value_recall),
+                "precision_delta_vs_fixed": float(adaptive.precision - fixed.precision),
+                "fraud_recall_delta_vs_fixed": float(adaptive.recall - fixed.recall),
+                "fraud_value_recall_delta_vs_fixed": float(
+                    adaptive.fraud_value_recall - fixed.fraud_value_recall
+                ),
+            })
     return pd.DataFrame(rows)
