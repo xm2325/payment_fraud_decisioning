@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '_bootstrap/READY'
+      - '_bootstrap_xz/READY'
 
 permissions:
   contents: write
@@ -20,11 +20,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat _bootstrap/chunk_*.b64 > /tmp/payment_fraud_v1_source.b64
-          base64 --decode /tmp/payment_fraud_v1_source.b64 > /tmp/payment_fraud_v1_source.zip
-          unzip -t /tmp/payment_fraud_v1_source.zip
-          unzip -o /tmp/payment_fraud_v1_source.zip -d .
-          rm -rf _bootstrap
+          cat _bootstrap_xz/chunk_*.b64 > /tmp/payment_fraud_v1_source.b64
+          base64 --decode /tmp/payment_fraud_v1_source.b64 > /tmp/payment_fraud_v1_source.tar.xz
+          tar -tJf /tmp/payment_fraud_v1_source.tar.xz >/dev/null
+          tar -xJf /tmp/payment_fraud_v1_source.tar.xz -C .
+          rm -rf _bootstrap _bootstrap_xz
           rm -f .github/workflows/bootstrap.yml
       - name: Commit normal repository tree
         shell: bash
@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm -r --cached --ignore-unmatch _bootstrap .github/workflows/bootstrap.yml
+          git rm -r --cached --ignore-unmatch _bootstrap _bootstrap_xz .github/workflows/bootstrap.yml
           git add -- .github .gitignore APPLICATION_NOTES.md DATA_PROVENANCE.md Dockerfile EXPERIMENT_DESIGN.md MODEL_CARD.md README.md RESULTS.md ROLE_ALIGNMENT.md SYSTEM_DESIGN.md pyproject.toml requirements.txt scripts sql src tests data/raw/.gitkeep data/processed/.gitkeep
           git commit -m 'feat: publish v1.0 fraud decisioning system'
           git push origin HEAD:main
