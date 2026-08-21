@@ -73,7 +73,7 @@ def locked_threshold_drift(
     threshold: float,
     target_legit_flag_rate: float = 0.001,
 ) -> pd.DataFrame:
-    """Measure budget drift after locking a validation-selected threshold."""
+    """Measure realised behaviour after locking a validation-selected scalar threshold."""
     rows = [
         _locked_threshold_row(
             "validation", val_y, val_score, val_amount, threshold, target_legit_flag_rate
@@ -99,7 +99,7 @@ def future_budget_windows(
     target_legit_flag_rate: float = 0.001,
     n_windows: int = 3,
 ) -> pd.DataFrame:
-    """Evaluate a locked threshold across contiguous future step windows."""
+    """Evaluate a locked scalar threshold across contiguous future step windows."""
     step_arr = np.asarray(step, dtype=int)
     unique_steps = np.unique(step_arr)
     if len(unique_steps) < n_windows:
@@ -125,18 +125,18 @@ def future_budget_windows(
     return pd.DataFrame(rows)
 
 
-def posthoc_budget_match(
+def posthoc_threshold_cap(
     y: Sequence[int],
     score: Sequence[float],
     amount: Sequence[float],
     target_legit_flag_rate: float = 0.001,
 ) -> dict:
-    """Post-hoc oracle diagnostic: threshold required to restore the target budget."""
+    """Retrospective scalar-threshold hard-cap diagnostic; it may under-use budget when scores tie."""
     y_arr = np.asarray(y, dtype=int)
     score_arr = np.asarray(score, dtype=float)
     threshold = threshold_at_legit_rate(y_arr, score_arr, target_legit_flag_rate)
     row = _locked_threshold_row(
-        "future_test_posthoc_budget_match",
+        "future_test_posthoc_threshold_cap",
         y_arr,
         score_arr,
         amount,
@@ -144,7 +144,129 @@ def posthoc_budget_match(
         target_legit_flag_rate,
     )
     row["diagnostic_only"] = True
+    row["may_underuse_budget_due_to_ties"] = True
     return row
+
+
+def posthoc_budget_match(
+    y: Sequence[int],
+    score: Sequence[float],
+    amount: Sequence[float],
+    target_legit_flag_rate: float = 0.001,
+) -> dict:
+    """Backward-compatible alias for the scalar threshold-cap diagnostic."""
+    return posthoc_threshold_cap(y, score, amount, target_legit_flag_rate)
+
+
+def ranked_capacity_metrics(
+    y: Sequence[int],
+    score: Sequence[float],
+    amount: Sequence[float],
+    event_key: Sequence[int],
+    alerts_per_10k: float,
+) -> dict:
+    """Evaluate exact top-k routing under a total alert-capacity budget.
+
+    The primary sort is descending model score. Equal scores are resolved by a stable non-label
+    event key, so capacity is exactly enforceable without using fraud labels or amount as a tie-break.
+    """
+    if alerts_per_10k < 0:
+        raise ValueError("alerts_per_10k must be non-negative")
+    y_arr = np.asarray(y, dtype=int)
+    score_arr = np.asarray(score, dtype=float)
+    amount_arr = np.asarray(amount, dtype=float)
+    key_arr = np.asarray(event_key, dtype=np.uint64)
+    if not (len(y_arr) == len(score_arr) == len(amount_arr) == len(key_arr)):
+        raise ValueError("y, score, amount and event_key must have equal length")
+    if len(y_arr) == 0:
+        raise ValueError("Need at least one row")
+    if np.any(~np.isfinite(score_arr)):
+        raise ValueError("Scores must be finite")
+
+    k = min(len(y_arr), int(np.floor(alerts_per_10k * len(y_arr) / 10_000)))
+    pred = np.zeros(len(y_arr), dtype=bool)
+    boundary_score = math.nan
+    boundary_tie_n = 0
+    boundary_tie_selected_n = 0
+    if k > 0:
+        order = np.lexsort((key_arr, -score_arr))
+        selected = order[:k]
+        pred[selected] = True
+        boundary_score = float(score_arr[order[k - 1]])
+        boundary_mask = score_arr == boundary_score
+        boundary_tie_n = int(boundary_mask.sum())
+        boundary_tie_selected_n = int((pred & boundary_mask).sum())
+
+    fraud = y_arr == 1
+    legit = ~fraud
+    perf = rule_metrics(y_arr, pred, amount_arr)
+    return {
+        "target_alerts_per_10k": float(alerts_per_10k),
+        "capacity_n": int(k),
+        "alerts": int(pred.sum()),
+        "actual_alerts_per_10k": float(pred.mean() * 10_000),
+        "precision": perf["precision"],
+        "recall": perf["recall"],
+        "legit_flag_rate": perf["legit_flag_rate"],
+        "legit_alerts_per_10k": float(perf["legit_flag_rate"] * 10_000),
+        "fraud_value_recall": perf["fraud_value_recall"],
+        "fraud_alerts": int((pred & fraud).sum()),
+        "legit_alerts": int((pred & legit).sum()),
+        "boundary_score": boundary_score,
+        "boundary_tie_n": boundary_tie_n,
+        "boundary_tie_selected_n": boundary_tie_selected_n,
+        "tie_breaker": "stable_non_label_event_key",
+    }
+
+
+def ranked_capacity_frontier(
+    y: Sequence[int],
+    score: Sequence[float],
+    amount: Sequence[float],
+    event_key: Sequence[int],
+    budgets_per_10k: Sequence[float] = (10, 25, 50, 100),
+) -> pd.DataFrame:
+    rows = [
+        ranked_capacity_metrics(y, score, amount, event_key, budget)
+        for budget in budgets_per_10k
+    ]
+    return pd.DataFrame(rows)
+
+
+def ranked_capacity_windows(
+    step: Sequence[int],
+    y: Sequence[int],
+    score: Sequence[float],
+    amount: Sequence[float],
+    event_key: Sequence[int],
+    alerts_per_10k: float = 50,
+    n_windows: int = 3,
+) -> pd.DataFrame:
+    """Apply the same governed total alert capacity independently to contiguous future windows."""
+    step_arr = np.asarray(step, dtype=int)
+    unique_steps = np.unique(step_arr)
+    if len(unique_steps) < n_windows:
+        raise ValueError("Need at least one distinct step per capacity window")
+    chunks = [c for c in np.array_split(unique_steps, n_windows) if len(c)]
+    y_arr = np.asarray(y, dtype=int)
+    score_arr = np.asarray(score, dtype=float)
+    amount_arr = np.asarray(amount, dtype=float)
+    key_arr = np.asarray(event_key, dtype=np.uint64)
+    rows: list[dict] = []
+    for idx, chunk in enumerate(chunks, start=1):
+        mask = np.isin(step_arr, chunk)
+        row = ranked_capacity_metrics(
+            y_arr[mask], score_arr[mask], amount_arr[mask], key_arr[mask], alerts_per_10k
+        )
+        row.update({
+            "period": f"future_window_{idx}",
+            "step_min": int(chunk.min()),
+            "step_max": int(chunk.max()),
+            "n": int(mask.sum()),
+            "fraud_n": int(y_arr[mask].sum()),
+        })
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def recipient_intensity_score(df: pd.DataFrame) -> np.ndarray:
@@ -196,6 +318,8 @@ def recipient_signal_audit(
     rows: list[dict] = []
     for name, val_score, future_score in signals:
         threshold = threshold_at_legit_rate(val_y, val_score, target_legit_flag_rate)
+        val_pred = val_score >= threshold
+        val_legit = val_y == 0
         pred = future_score >= threshold
         perf = rule_metrics(future_y, pred, future_amount)
         auc = float(roc_auc_score(future_y, future_score))
@@ -206,6 +330,7 @@ def recipient_signal_audit(
                 "signal": name,
                 "validation_threshold": float(threshold),
                 "target_validation_legit_flag_rate": float(target_legit_flag_rate),
+                "validation_actual_legit_flag_rate": float(val_pred[val_legit].mean()),
                 "future_auc": auc,
                 **perf,
                 "future_fraud_median": float(np.median(fraud_values)),
