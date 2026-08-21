@@ -1,0 +1,1 @@
+Reconstruct the previously uploaded verified v1.0 source archive, overlay current PaySim validation code, then remove transport files before merge.
