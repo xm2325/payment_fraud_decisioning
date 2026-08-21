@@ -93,4 +93,19 @@ jobs:
             exit 0
           fi
           git commit -m 'data: add full PaySim monitoring audit results'
-          git push
+
+          # Monitoring and benchmark workflows can finish concurrently from the
+          # same main SHA. Rebase the local result commit onto the latest main
+          # before each push attempt so one bot result cannot make the other a
+          # non-fast-forward failure.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Publish attempt ${attempt} lost a race; retrying."
+            sleep $((attempt * 2))
+          done
+          echo 'Failed to publish aggregate monitoring results after 3 attempts.' >&2
+          exit 1
