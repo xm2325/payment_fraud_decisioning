@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '_bootstrap/payment_fraud_v1_source.b64'
+      - '_bootstrap/READY'
 
 permissions:
   contents: write
@@ -16,11 +16,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Unpack source bundle
+      - name: Reassemble and unpack source bundle
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode _bootstrap/payment_fraud_v1_source.b64 > /tmp/payment_fraud_v1_source.zip
+          cat _bootstrap/chunk_*.b64 > /tmp/payment_fraud_v1_source.b64
+          base64 --decode /tmp/payment_fraud_v1_source.b64 > /tmp/payment_fraud_v1_source.zip
+          unzip -t /tmp/payment_fraud_v1_source.zip
           unzip -o /tmp/payment_fraud_v1_source.zip -d .
           rm -rf _bootstrap
           rm -f .github/workflows/bootstrap.yml
