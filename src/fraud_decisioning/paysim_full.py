@@ -17,7 +17,7 @@ CANONICAL_PAYSIM = {
     "step_max": 743,
 }
 
-from .paysim_features import FEATURE_COLUMNS, FEATURE_SETS
+from .paysim_features import BALANCE_FREE_REFERENCE, FEATURE_COLUMNS, FEATURE_SETS
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,39 @@ def feature_sql(parquet_glob: str | Path) -> str:
             AVG(amount) OVER (
                 PARTITION BY nameOrig ORDER BY step
                 RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
-            )::DOUBLE AS sender_mean_amount_7d
+            )::DOUBLE AS sender_mean_amount_7d,
+            COUNT(*) OVER (
+                PARTITION BY nameOrig ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            )::DOUBLE AS sender_tx_7d,
+            COUNT(*) OVER (
+                PARTITION BY nameDest ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            )::DOUBLE AS recipient_tx_7d,
+            COALESCE(SUM(amount) OVER (
+                PARTITION BY nameDest ORDER BY step
+                RANGE BETWEEN 24 PRECEDING AND 1 PRECEDING
+            ), 0)::DOUBLE AS recipient_amount_24h,
+            COUNT(*) OVER (
+                PARTITION BY nameOrig, nameDest ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            )::DOUBLE AS pair_tx_7d,
+            COALESCE(SUM(amount) OVER (
+                PARTITION BY nameOrig, nameDest ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            ), 0)::DOUBLE AS pair_amount_7d,
+            COALESCE(SUM(amount) OVER (
+                PARTITION BY nameOrig ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            ), 0)::DOUBLE AS sender_amount_7d,
+            APPROX_COUNT_DISTINCT(nameDest) OVER (
+                PARTITION BY nameOrig ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            )::DOUBLE AS sender_unique_recipients_7d,
+            APPROX_COUNT_DISTINCT(nameOrig) OVER (
+                PARTITION BY nameDest ORDER BY step
+                RANGE BETWEEN 168 PRECEDING AND 1 PRECEDING
+            )::DOUBLE AS recipient_unique_senders_7d
         FROM {src}
     )
     SELECT
@@ -124,6 +156,14 @@ def feature_sql(parquet_glob: str | Path) -> str:
         sender_amount_24h,
         recipient_fanin_24h,
         (amount / GREATEST(COALESCE(sender_mean_amount_7d, amount), 1))::DOUBLE AS amount_vs_7d_mean,
+        sender_tx_7d,
+        recipient_tx_7d,
+        recipient_amount_24h,
+        pair_tx_7d,
+        pair_amount_7d,
+        LEAST(GREATEST(pair_amount_7d / GREATEST(sender_amount_7d, 1), 0), 1)::DOUBLE AS sender_recipient_share_7d,
+        sender_unique_recipients_7d,
+        recipient_unique_senders_7d,
         (old_balance_sender - new_balance_sender)::DOUBLE AS orig_balance_delta,
         (new_balance_dest - old_balance_dest)::DOUBLE AS dest_balance_delta,
         (type = 'CASH_IN')::INTEGER AS type_CASH_IN,
@@ -186,8 +226,8 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
 
     pd.DataFrame(ablation_rows).to_csv(out_dir / "model_ablation.csv", index=False)
 
-    # Full model operating frontier is retained for continuity with the first full-data run.
-    pv, pt = predictions["full_with_simulator_balances"]
+    # Balance-free model is the deployment-style reference; simulator balances are sensitivity only.
+    pv, pt = predictions[BALANCE_FREE_REFERENCE]
     operating_rows = []
     for target in [0.0002, 0.0005, 0.001, 0.002, 0.005]:
         threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), pv, target)
@@ -211,16 +251,17 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
         "feature_sets": FEATURE_SETS,
         "model_ablation_reference": {row["model"]: row for row in ablation_rows},
         "runtime_seconds": float(time.time() - started),
+        "balance_free_reference_model": BALANCE_FREE_REFERENCE,
         "reference_operating_point": operating_rows[2],
         "limitations": [
             "PaySim is synthetic mobile-money data; performance is not a production estimate.",
-            "Balance fields may reflect simulator mechanics and can be unusually informative; transaction-only and history-only ablations are reported separately.",
+            "Balance fields reflect simulator mechanics and are sensitivity-only; the operating frontier uses the balance-free relational model.",
+            "Approximate distinct counterparty counts are strict prior-step 7-day windows and are evaluated only for incremental value.",
             "Step is hourly; same-step transactions are treated as simultaneous and cannot see each other.",
         ],
     }
     with open(out_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
-    # Raw features and DuckDB database are transient runner products, not publication artifacts.
     work.unlink(missing_ok=True)
     con.close()
     (out_dir / "paysim.duckdb").unlink(missing_ok=True)
