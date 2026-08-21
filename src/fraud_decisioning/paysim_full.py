@@ -26,8 +26,6 @@ class PaySimSplit:
     validation_cut: int
 
 
-
-
 def select_balance_free_champion(ablation_rows: list[dict]) -> str:
     """Choose the balance-free model using validation evidence only."""
     candidates = [r for r in ablation_rows if r.get("model") in BALANCE_FREE_CANDIDATES]
@@ -122,6 +120,7 @@ def feature_sql(parquet_glob: str | Path) -> str:
             newbalanceOrig::DOUBLE AS new_balance_sender,
             oldbalanceDest::DOUBLE AS old_balance_dest,
             newbalanceDest::DOUBLE AS new_balance_dest,
+            hash(step, type, amount, nameOrig, nameDest, oldbalanceOrg, newbalanceOrig, oldbalanceDest, newbalanceDest)::UBIGINT AS event_key,
             isFraud::INTEGER AS is_fraud,
             isFlaggedFraud::INTEGER AS is_flagged_fraud,
             COUNT(*) OVER (
@@ -180,6 +179,7 @@ def feature_sql(parquet_glob: str | Path) -> str:
     )
     SELECT
         step,
+        event_key,
         amount,
         is_fraud,
         is_flagged_fraud,
@@ -216,8 +216,10 @@ def materialise_features(con, parquet_glob: str | Path, output_parquet: str | Pa
 
 def _load_split(con, feature_parquet: str | Path, where: str) -> pd.DataFrame:
     p = str(feature_parquet).replace("'", "''")
-    cols = ", ".join(["step", "amount", "is_fraud", "is_flagged_fraud"] + FEATURE_COLUMNS)
-    return con.execute(f"SELECT {cols} FROM read_parquet('{p}') WHERE {where}").df()
+    cols = ", ".join(["step", "event_key", "amount", "is_fraud", "is_flagged_fraud"] + FEATURE_COLUMNS)
+    return con.execute(
+        f"SELECT {cols} FROM read_parquet('{p}') WHERE {where} ORDER BY step, event_key"
+    ).df()
 
 
 def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
@@ -257,25 +259,26 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
             "n_features": len(features),
             "validation_pr_auc": val_row["pr_auc"],
             "target_validation_legit_flag_rate": 0.001,
+            "validation_actual_legit_flag_rate": val_row["legit_flag_rate"],
         })
         ablation_rows.append(row)
 
     pd.DataFrame(ablation_rows).to_csv(out_dir / "model_ablation.csv", index=False)
 
-    # Select the balance-free champion on validation only; simulator balances remain sensitivity-only.
     balance_free_reference = select_balance_free_champion(ablation_rows)
     pv, pt = predictions[balance_free_reference]
     operating_rows = []
     for target in [0.0002, 0.0005, 0.001, 0.002, 0.005]:
         threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), pv, target)
         row = binary_metrics(test.is_fraud, pt, test.amount, threshold)
+        val_row = binary_metrics(val.is_fraud, pv, val.amount, threshold)
         row["target_validation_legit_flag_rate"] = target
+        row["validation_actual_legit_flag_rate"] = val_row["legit_flag_rate"]
         operating_rows.append(row)
     pd.DataFrame(operating_rows).to_csv(out_dir / "operating_points.csv", index=False)
 
     source_rule = rule_metrics(test.is_fraud, test.is_flagged_fraud, test.amount)
 
-    # Interpretable amount/type rule: threshold is chosen on validation only.
     val_rule_score = amount_type_rule_scores(val)
     test_rule_score = amount_type_rule_scores(test)
     simple_rule_threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), val_rule_score, 0.001)
@@ -283,6 +286,10 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
     simple_rule = rule_metrics(test.is_fraud, simple_rule_pred, test.amount)
     simple_rule["threshold_log_amount"] = float(simple_rule_threshold)
     simple_rule["target_validation_legit_flag_rate"] = 0.001
+    simple_rule["validation_actual_legit_flag_rate"] = float(
+        ((val_rule_score >= simple_rule_threshold) & (val.is_fraud.to_numpy() == 0)).sum()
+        / (val.is_fraud.to_numpy() == 0).sum()
+    )
 
     value_concentration = fraud_value_concentration(test.amount.to_numpy(), test.is_fraud.to_numpy())
     split_rows = [
@@ -307,13 +314,13 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
             "PaySim is synthetic mobile-money data; performance is not a production estimate.",
             "Balance fields reflect simulator mechanics and are sensitivity-only; the balance-free champion is selected on validation PR-AUC only.",
             "Approximate distinct counterparty counts are strict prior-step 7-day windows and are evaluated only for incremental value.",
-            "The simple amount/type rule threshold is also selected on validation before future-test evaluation.",
+            "Scalar threshold targets are hard caps; discrete/tied scores can materially under-use a narrow alert budget.",
+            "The non-label event_key provides deterministic row ordering and capacity tie-breaking; it is never a model feature.",
             "Step is hourly; same-step transactions are treated as simultaneous and cannot see each other.",
         ],
     }
     with open(out_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
-    # Raw features and DuckDB database are transient runner products, not publication artifacts.
     work.unlink(missing_ok=True)
     con.close()
     (out_dir / "paysim.duckdb").unlink(missing_ok=True)

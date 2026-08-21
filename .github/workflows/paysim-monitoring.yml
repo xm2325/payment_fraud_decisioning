@@ -9,6 +9,15 @@ on:
       - 'scripts/run_paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_metrics.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/paysim-monitoring.yml'
+      - 'scripts/run_paysim_monitoring.py'
+      - 'src/fraud_decisioning/paysim_monitoring.py'
+      - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_metrics.py'
 
 permissions:
   contents: write
@@ -57,7 +66,11 @@ jobs:
         run: |
           cat results/paysim_monitoring/summary.json
           cat results/paysim_monitoring/threshold_budget_drift.csv
-          cat results/paysim_monitoring/future_budget_windows.csv
+          cat results/paysim_monitoring/future_threshold_windows.csv
+          cat results/paysim_monitoring/future_posthoc_threshold_cap.csv
+          cat results/paysim_monitoring/ranked_capacity_frontier.csv
+          cat results/paysim_monitoring/ranked_capacity_comparison.csv
+          cat results/paysim_monitoring/ranked_capacity_windows_50_per_10k.csv
           cat results/paysim_monitoring/recipient_signal_audit.csv
 
       - uses: actions/upload-artifact@v4
@@ -68,6 +81,7 @@ jobs:
           retention-days: 30
 
       - name: Commit aggregate monitoring results
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail

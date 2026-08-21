@@ -3,8 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 import time
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pandas as pd
@@ -13,6 +17,7 @@ from fraud_decisioning.modeling import calibrate, fit_lightgbm, fit_sigmoid_cali
 from fraud_decisioning.paysim_features import FEATURE_SETS
 from fraud_decisioning.paysim_full import (
     _load_split,
+    amount_type_rule_scores,
     audit_sql,
     connect_duckdb,
     determine_split,
@@ -23,7 +28,9 @@ from fraud_decisioning.paysim_metrics import threshold_at_legit_rate
 from fraud_decisioning.paysim_monitoring import (
     future_budget_windows,
     locked_threshold_drift,
-    posthoc_budget_match,
+    posthoc_threshold_cap,
+    ranked_capacity_frontier,
+    ranked_capacity_windows,
     recipient_signal_audit,
 )
 
@@ -39,6 +46,12 @@ def _json_safe(value):
     if isinstance(value, float) and not math.isfinite(value):
         return None
     return value
+
+
+def _with_ranker(frame: pd.DataFrame, ranker: str) -> pd.DataFrame:
+    out = frame.copy()
+    out.insert(0, "ranker", ranker)
+    return out
 
 
 def main() -> None:
@@ -71,6 +84,7 @@ def main() -> None:
     val_score = calibrate(calibrator, val_raw)
     future_score = calibrate(calibrator, model.predict_proba(test[features])[:, 1])
 
+    # Scalar-threshold diagnostic: target is a validation legitimate-alert hard cap.
     target = 0.001
     locked_threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), val_score, target)
     drift = locked_threshold_drift(
@@ -84,36 +98,141 @@ def main() -> None:
         test.step, test.is_fraud, future_score, test.amount,
         locked_threshold, target, n_windows=3,
     )
-    windows.to_csv(out_dir / "future_budget_windows.csv", index=False)
+    windows.to_csv(out_dir / "future_threshold_windows.csv", index=False)
 
-    oracle = posthoc_budget_match(test.is_fraud, future_score, test.amount, target)
-    pd.DataFrame([oracle]).to_csv(out_dir / "future_budget_rethreshold_oracle.csv", index=False)
+    threshold_cap = posthoc_threshold_cap(test.is_fraud, future_score, test.amount, target)
+    pd.DataFrame([threshold_cap]).to_csv(out_dir / "future_posthoc_threshold_cap.csv", index=False)
+
+    # Deployable capacity contract: exact total alert budget, independent of labels.
+    budgets = (10, 25, 50, 100)
+    model_capacity = ranked_capacity_frontier(
+        test.is_fraud,
+        future_score,
+        test.amount,
+        test.event_key,
+        budgets_per_10k=budgets,
+    )
+    model_capacity.to_csv(out_dir / "ranked_capacity_frontier.csv", index=False)
+
+    # Apples-to-apples ranker comparison: identical exact review capacity, only ranking changes.
+    amount_rule_score = amount_type_rule_scores(test)
+    expected_loss_score = future_score * np.clip(test.amount.to_numpy(dtype=float), 0, None)
+    amount_rule_capacity = ranked_capacity_frontier(
+        test.is_fraud,
+        amount_rule_score,
+        test.amount,
+        test.event_key,
+        budgets_per_10k=budgets,
+    )
+    expected_loss_capacity = ranked_capacity_frontier(
+        test.is_fraud,
+        expected_loss_score,
+        test.amount,
+        test.event_key,
+        budgets_per_10k=budgets,
+    )
+    capacity_comparison = pd.concat(
+        [
+            _with_ranker(model_capacity, "relational_model_probability"),
+            _with_ranker(expected_loss_capacity, "model_probability_x_amount"),
+            _with_ranker(amount_rule_capacity, "amount_type_rule"),
+        ],
+        ignore_index=True,
+    )
+    capacity_comparison.to_csv(out_dir / "ranked_capacity_comparison.csv", index=False)
+
+    reference_capacity_per_10k = 50
+    model_capacity_windows = ranked_capacity_windows(
+        test.step,
+        test.is_fraud,
+        future_score,
+        test.amount,
+        test.event_key,
+        alerts_per_10k=reference_capacity_per_10k,
+        n_windows=3,
+    )
+    expected_loss_windows = ranked_capacity_windows(
+        test.step,
+        test.is_fraud,
+        expected_loss_score,
+        test.amount,
+        test.event_key,
+        alerts_per_10k=reference_capacity_per_10k,
+        n_windows=3,
+    )
+    amount_rule_windows = ranked_capacity_windows(
+        test.step,
+        test.is_fraud,
+        amount_rule_score,
+        test.amount,
+        test.event_key,
+        alerts_per_10k=reference_capacity_per_10k,
+        n_windows=3,
+    )
+    capacity_windows = pd.concat(
+        [
+            _with_ranker(model_capacity_windows, "relational_model_probability"),
+            _with_ranker(expected_loss_windows, "model_probability_x_amount"),
+            _with_ranker(amount_rule_windows, "amount_type_rule"),
+        ],
+        ignore_index=True,
+    )
+    capacity_windows.to_csv(out_dir / "ranked_capacity_windows_50_per_10k.csv", index=False)
 
     recipient = recipient_signal_audit(val, test, target)
     recipient.to_csv(out_dir / "recipient_signal_audit.csv", index=False)
 
     val_row = drift.loc[drift.period == "validation"].iloc[0]
     future_row = drift.loc[drift.period == "future_test"].iloc[0]
+    model_reference = model_capacity.loc[
+        model_capacity.target_alerts_per_10k == reference_capacity_per_10k
+    ].iloc[0]
+    expected_loss_reference = expected_loss_capacity.loc[
+        expected_loss_capacity.target_alerts_per_10k == reference_capacity_per_10k
+    ].iloc[0]
+    baseline_reference = amount_rule_capacity.loc[
+        amount_rule_capacity.target_alerts_per_10k == reference_capacity_per_10k
+    ].iloc[0]
     strongest = recipient.sort_values(["fraud_value_recall", "recall"], ascending=False).iloc[0]
     summary = {
         "audit": audit,
         "split": {"train_cut": split.train_cut, "validation_cut": split.validation_cut},
         "model": "transaction_plus_relational",
-        "target_validation_legit_flag_rate": target,
-        "locked_threshold": float(locked_threshold),
-        "validation_actual_legit_flag_rate": float(val_row.legit_flag_rate),
-        "future_actual_legit_flag_rate": float(future_row.legit_flag_rate),
-        "future_budget_multiplier_vs_target": float(future_row.budget_multiplier_vs_target),
-        "future_budget_multiplier_vs_validation_actual": float(future_row.budget_multiplier_vs_validation_actual),
-        "locked_threshold_future_precision": float(future_row.precision),
-        "locked_threshold_future_recall": float(future_row.recall),
-        "locked_threshold_future_fraud_value_recall": float(future_row.fraud_value_recall),
-        "posthoc_budget_match": oracle,
+        "scalar_threshold_diagnostic": {
+            "target_validation_legit_flag_rate": target,
+            "locked_threshold": float(locked_threshold),
+            "validation_actual_legit_flag_rate": float(val_row.legit_flag_rate),
+            "future_actual_legit_flag_rate": float(future_row.legit_flag_rate),
+            "future_precision": float(future_row.precision),
+            "future_recall": float(future_row.recall),
+            "future_fraud_value_recall": float(future_row.fraud_value_recall),
+            "posthoc_threshold_cap": threshold_cap,
+        },
+        "ranked_capacity_reference_alerts_per_10k": reference_capacity_per_10k,
+        "ranked_capacity_reference": {
+            "relational_model_probability": model_reference.to_dict(),
+            "model_probability_x_amount": expected_loss_reference.to_dict(),
+            "amount_type_rule": baseline_reference.to_dict(),
+            "probability_minus_rule_recall": float(model_reference.recall - baseline_reference.recall),
+            "probability_minus_rule_fraud_value_recall": float(
+                model_reference.fraud_value_recall - baseline_reference.fraud_value_recall
+            ),
+            "expected_loss_minus_probability_recall": float(
+                expected_loss_reference.recall - model_reference.recall
+            ),
+            "expected_loss_minus_probability_fraud_value_recall": float(
+                expected_loss_reference.fraud_value_recall - model_reference.fraud_value_recall
+            ),
+        },
         "strongest_recipient_signal_by_future_value_recall": strongest.to_dict(),
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
-            "The operating threshold is selected on validation labels only and then locked for future evaluation.",
-            "The post-hoc future budget-matched threshold is diagnostic-only and is not a deployable prospective result.",
+            "Scalar threshold targets are hard caps; tied scores can materially under-use a narrow budget.",
+            "Ranked capacity routing fixes a total alert budget per 10,000 transactions without using fraud labels to set capacity.",
+            "Probability, probability-times-amount, and amount/type rankers are compared at identical exact alert capacities.",
+            "Probability-times-amount is an expected-loss prioritisation heuristic, not a prevented-loss estimate; it inherits calibration and amount-quality assumptions.",
+            "Equal scores are resolved only by a stable event key derived from non-label transaction fields; event_key is never a model feature.",
+            "The post-hoc future threshold cap is retrospective and diagnostic-only; it is not a deployable prospective result.",
             "Recipient signals use strict prior-step history; same-step PaySim transactions are simultaneous.",
             "PaySim has no confirmed mule-account label. Recipient activity results are investigation-signal audits, not mule-classification claims.",
             "PaySim is synthetic mobile-money data; all reported performance is benchmark evidence, not production impact."

@@ -3,11 +3,36 @@ import math
 import numpy as np
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
+
 def threshold_at_legit_rate(y: np.ndarray, p: np.ndarray, target: float) -> float:
-    legit = np.asarray(p)[np.asarray(y) == 0]
+    """Choose the lowest >= threshold whose validation legitimate-alert rate stays <= target.
+
+    Tree/rule scores can contain large ties. A plain quantile combined with ``score >= threshold``
+    can therefore exceed the requested alert budget. This selector treats the target as a hard cap:
+    if the boundary score is tied across too many legitimate rows, it moves just above that score.
+    """
+    if not 0 <= target <= 1:
+        raise ValueError("target must be in [0, 1]")
+    scores = np.asarray(p, dtype=float)
+    labels = np.asarray(y)
+    legit = scores[labels == 0]
     if len(legit) == 0:
         raise ValueError("No legitimate validation rows")
-    return float(np.quantile(legit, 1 - target, method="higher"))
+    if np.any(~np.isfinite(legit)):
+        raise ValueError("Legitimate validation scores must be finite")
+    if target == 1:
+        return float(np.min(legit))
+
+    max_alerts = int(np.floor(target * len(legit)))
+    if max_alerts <= 0:
+        return float(np.nextafter(np.max(legit), np.inf))
+
+    descending = np.sort(legit)[::-1]
+    boundary = float(descending[max_alerts - 1])
+    flagged_at_boundary = int(np.count_nonzero(legit >= boundary))
+    if flagged_at_boundary > max_alerts:
+        return float(np.nextafter(boundary, np.inf))
+    return boundary
 
 
 def binary_metrics(y, p, amount, threshold: float) -> dict:
@@ -46,5 +71,3 @@ def rule_metrics(y, rule, amount) -> dict:
         "fraud_value_recall": float(amount[rule & fraud].sum() / amount[fraud].sum()),
         "alerts": int(rule.sum()),
     }
-
-
