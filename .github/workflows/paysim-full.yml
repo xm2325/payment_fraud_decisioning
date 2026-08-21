@@ -1,0 +1,80 @@
+name: Full PaySim benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/paysim-full.yml'
+      - 'scripts/run_paysim_full.py'
+      - 'src/fraud_decisioning/paysim_full.py'
+
+permissions:
+  contents: write
+
+jobs:
+  paysim-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download canonical PaySim parquet shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/raw/paysim
+          curl --fail --location --retry 5 --retry-all-errors \
+            -o data/raw/paysim/0.parquet \
+            'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/0.parquet'
+          curl --fail --location --retry 5 --retry-all-errors \
+            -o data/raw/paysim/1.parquet \
+            'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet'
+          ls -lh data/raw/paysim
+
+      - name: Run full 6.36M-row benchmark
+        run: |
+          python scripts/run_paysim_full.py \
+            --parquet-glob 'data/raw/paysim/*.parquet' \
+            --out results/paysim_full
+
+      - name: Show aggregate results
+        run: |
+          cat results/paysim_full/summary.json
+          cat results/paysim_full/operating_points.csv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paysim-full-aggregate-results
+          path: results/paysim_full
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit aggregate benchmark results
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- results/paysim_full
+          if git diff --cached --quiet; then
+            echo 'No aggregate result changes to commit.'
+            exit 0
+          fi
+          git commit -m 'data: add full PaySim benchmark results'
+          git push
