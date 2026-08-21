@@ -1,0 +1,54 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "split": {
+    "train_cut": 446,
+    "validation_cut": 595
+  },
+  "source_rule": {
+    "precision": 1.0,
+    "recall": 0.0048367593712212815,
+    "legit_flag_rate": 0.0,
+    "fraud_value_recall": 0.015627424004537805,
+    "alerts": 8
+  },
+  "feature_columns": [
+    "log_amount",
+    "balance_fraction",
+    "sender_tx_1h",
+    "sender_tx_24h",
+    "sender_amount_24h",
+    "recipient_fanin_24h",
+    "amount_vs_7d_mean",
+    "orig_balance_delta",
+    "dest_balance_delta",
+    "type_CASH_IN",
+    "type_CASH_OUT",
+    "type_DEBIT",
+    "type_PAYMENT",
+    "type_TRANSFER"
+  ],
+  "runtime_seconds": 64.43078470230103,
+  "reference_operating_point": {
+    "roc_auc": 0.999938789760102,
+    "pr_auc": 0.9951893415457592,
+    "brier": 0.000574114415471785,
+    "threshold": 0.004929383572678696,
+    "precision": 0.9183786785119378,
+    "recall": 1.0,
+    "legit_flag_rate": 0.0012056493282810886,
+    "fraud_value_recall": 1.0,
+    "alerts": 1801,
+    "target_validation_legit_flag_rate": 0.001
+  },
+  "limitations": [
+    "PaySim is synthetic mobile-money data; performance is not a production estimate.",
+    "Balance fields may reflect simulator mechanics and can be unusually informative.",
+    "Step is hourly; same-step transactions are treated as simultaneous and cannot see each other."
+  ]
+}
