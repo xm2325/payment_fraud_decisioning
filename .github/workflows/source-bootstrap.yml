@@ -34,9 +34,9 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf _bootstrap_v11
-          rm -f .github/workflows/source-bootstrap.yml
-          git rm -r --cached --ignore-unmatch _bootstrap_v11 .github/workflows/source-bootstrap.yml
+          rm -rf _bootstrap _bootstrap_xz _bootstrap_v11
+          rm -f .github/workflows/bootstrap.yml .github/workflows/source-bootstrap.yml
+          git rm -r --cached --ignore-unmatch _bootstrap _bootstrap_xz _bootstrap_v11 .github/workflows/bootstrap.yml .github/workflows/source-bootstrap.yml
           git add -- .github .gitignore APPLICATION_NOTES.md DATA_PROVENANCE.md Dockerfile EXPERIMENT_DESIGN.md MODEL_CARD.md PAYSIM_BENCHMARK.md README.md RESULTS.md ROLE_ALIGNMENT.md SYSTEM_DESIGN.md pyproject.toml requirements.txt scripts sql src tests data/raw/.gitkeep data/processed/.gitkeep results/paysim_full/.gitkeep
           git diff --cached --stat
           git commit -m 'feat: publish v1.1 fraud decisioning source tree'
