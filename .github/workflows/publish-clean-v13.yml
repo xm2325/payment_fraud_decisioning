@@ -86,29 +86,43 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -a /tmp/payment_fraud_clean_v13/. .
 
-      - name: Apply pandas-resolution regression fix and v1.3 metadata
+      - name: Apply pandas-resolution regression fixes and v1.3 metadata
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           import re
+
+          # Runtime feature timestamp conversion: pandas 3 may preserve microseconds.
           p = Path('src/fraud_decisioning/features.py')
           s = p.read_text()
           old = '    ts = (x["timestamp"].astype("int64") // 10**9).to_numpy()'
           new = ('    # Pandas 3 may preserve microsecond datetime resolution; normalize explicitly.\n'
                  '    ts = (x["timestamp"].dt.as_unit("ns").astype("int64") // 10**9).to_numpy()')
           if old not in s and '.dt.as_unit("ns")' not in s:
-              raise SystemExit('Expected timestamp conversion not found')
+              raise SystemExit('Expected feature timestamp conversion not found')
           if old in s:
               p.write_text(s.replace(old, new))
 
+          # Add a direct regression fixture using datetime64[us, UTC].
           t = Path('tests/test_features.py')
           s = t.read_text()
           marker = 'test_velocity_handles_microsecond_timestamp_resolution'
           if marker not in s:
               s += '''\n\ndef test_velocity_handles_microsecond_timestamp_resolution():\n    t0 = pd.Timestamp("2026-01-01", tz="UTC")\n    df = pd.DataFrame({\n        "transaction_id": [1, 2, 3],\n        "timestamp": pd.Series(pd.to_datetime([t0, t0 + pd.Timedelta(minutes=30), t0 + pd.Timedelta(hours=2)])).dt.as_unit("us"),\n        "type": ["TRANSFER"] * 3, "amount": [10., 20., 30.],\n        "sender": ["A"] * 3, "recipient": ["B"] * 3,\n        "old_balance_sender": [100.] * 3, "new_balance_sender": [90., 80., 70.],\n        "account_age_days": [100] * 3, "device_id": ["D"] * 3,\n        "device_change": [0] * 3, "country_mismatch": [0] * 3,\n        "recipient_new": [0] * 3, "is_fraud": [0] * 3,\n        "fraud_type": ["legitimate"] * 3,\n    })\n    out, _ = build_features(df)\n    assert out.loc[1, "sender_tx_1h"] == 1\n    assert out.loc[2, "sender_tx_1h"] == 0\n'''
               t.write_text(s)
+
+          # SQL/Python parity fixture must use the same explicit epoch unit.
+          q = Path('tests/test_sql_parity.py')
+          s = q.read_text()
+          old_sql = 'df.timestamp.astype("int64") // 10**9'
+          new_sql = 'df.timestamp.dt.as_unit("ns").astype("int64") // 10**9'
+          if old_sql not in s and new_sql not in s:
+              raise SystemExit('Expected SQL parity timestamp conversion not found')
+          if old_sql in s:
+              s = s.replace(old_sql, new_sql)
+              q.write_text(s)
 
           for fn in ['pyproject.toml', 'src/fraud_decisioning/__init__.py', 'src/fraud_decisioning/api.py']:
               p = Path(fn); s = p.read_text()
