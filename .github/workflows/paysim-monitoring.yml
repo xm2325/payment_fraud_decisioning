@@ -9,6 +9,7 @@ on:
       - 'scripts/run_paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_metrics.py'
   pull_request:
     branches: [main]
     paths:
@@ -16,6 +17,7 @@ on:
       - 'scripts/run_paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_monitoring.py'
       - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/paysim_metrics.py'
 
 permissions:
   contents: write
