@@ -114,8 +114,9 @@ def main() -> None:
     )
     model_capacity.to_csv(out_dir / "ranked_capacity_frontier.csv", index=False)
 
-    # Apples-to-apples baseline: identical exact review capacity, only the ranking score changes.
+    # Apples-to-apples ranker comparison: identical exact review capacity, only ranking changes.
     amount_rule_score = amount_type_rule_scores(test)
+    expected_loss_score = future_score * np.clip(test.amount.to_numpy(dtype=float), 0, None)
     amount_rule_capacity = ranked_capacity_frontier(
         test.is_fraud,
         amount_rule_score,
@@ -123,9 +124,17 @@ def main() -> None:
         test.event_key,
         budgets_per_10k=budgets,
     )
+    expected_loss_capacity = ranked_capacity_frontier(
+        test.is_fraud,
+        expected_loss_score,
+        test.amount,
+        test.event_key,
+        budgets_per_10k=budgets,
+    )
     capacity_comparison = pd.concat(
         [
-            _with_ranker(model_capacity, "relational_model"),
+            _with_ranker(model_capacity, "relational_model_probability"),
+            _with_ranker(expected_loss_capacity, "model_probability_x_amount"),
             _with_ranker(amount_rule_capacity, "amount_type_rule"),
         ],
         ignore_index=True,
@@ -142,6 +151,15 @@ def main() -> None:
         alerts_per_10k=reference_capacity_per_10k,
         n_windows=3,
     )
+    expected_loss_windows = ranked_capacity_windows(
+        test.step,
+        test.is_fraud,
+        expected_loss_score,
+        test.amount,
+        test.event_key,
+        alerts_per_10k=reference_capacity_per_10k,
+        n_windows=3,
+    )
     amount_rule_windows = ranked_capacity_windows(
         test.step,
         test.is_fraud,
@@ -153,7 +171,8 @@ def main() -> None:
     )
     capacity_windows = pd.concat(
         [
-            _with_ranker(model_capacity_windows, "relational_model"),
+            _with_ranker(model_capacity_windows, "relational_model_probability"),
+            _with_ranker(expected_loss_windows, "model_probability_x_amount"),
             _with_ranker(amount_rule_windows, "amount_type_rule"),
         ],
         ignore_index=True,
@@ -167,6 +186,9 @@ def main() -> None:
     future_row = drift.loc[drift.period == "future_test"].iloc[0]
     model_reference = model_capacity.loc[
         model_capacity.target_alerts_per_10k == reference_capacity_per_10k
+    ].iloc[0]
+    expected_loss_reference = expected_loss_capacity.loc[
+        expected_loss_capacity.target_alerts_per_10k == reference_capacity_per_10k
     ].iloc[0]
     baseline_reference = amount_rule_capacity.loc[
         amount_rule_capacity.target_alerts_per_10k == reference_capacity_per_10k
@@ -188,20 +210,27 @@ def main() -> None:
         },
         "ranked_capacity_reference_alerts_per_10k": reference_capacity_per_10k,
         "ranked_capacity_reference": {
-            "relational_model": model_reference.to_dict(),
+            "relational_model_probability": model_reference.to_dict(),
+            "model_probability_x_amount": expected_loss_reference.to_dict(),
             "amount_type_rule": baseline_reference.to_dict(),
-            "model_minus_rule_recall": float(model_reference.recall - baseline_reference.recall),
-            "model_minus_rule_fraud_value_recall": float(
+            "probability_minus_rule_recall": float(model_reference.recall - baseline_reference.recall),
+            "probability_minus_rule_fraud_value_recall": float(
                 model_reference.fraud_value_recall - baseline_reference.fraud_value_recall
             ),
-            "model_minus_rule_precision": float(model_reference.precision - baseline_reference.precision),
+            "expected_loss_minus_probability_recall": float(
+                expected_loss_reference.recall - model_reference.recall
+            ),
+            "expected_loss_minus_probability_fraud_value_recall": float(
+                expected_loss_reference.fraud_value_recall - model_reference.fraud_value_recall
+            ),
         },
         "strongest_recipient_signal_by_future_value_recall": strongest.to_dict(),
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
             "Scalar threshold targets are hard caps; tied scores can materially under-use a narrow budget.",
             "Ranked capacity routing fixes a total alert budget per 10,000 transactions without using fraud labels to set capacity.",
-            "The relational model and amount/type baseline are compared at identical exact alert capacities; only ranking scores differ.",
+            "Probability, probability-times-amount, and amount/type rankers are compared at identical exact alert capacities.",
+            "Probability-times-amount is an expected-loss prioritisation heuristic, not a prevented-loss estimate; it inherits calibration and amount-quality assumptions.",
             "Equal scores are resolved only by a stable event key derived from non-label transaction fields; event_key is never a model feature.",
             "The post-hoc future threshold cap is retrospective and diagnostic-only; it is not a deployable prospective result.",
             "Recipient signals use strict prior-step history; same-step PaySim transactions are simultaneous.",
