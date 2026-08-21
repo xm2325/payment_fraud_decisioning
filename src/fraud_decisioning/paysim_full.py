@@ -17,22 +17,7 @@ CANONICAL_PAYSIM = {
     "step_max": 743,
 }
 
-FEATURE_COLUMNS = [
-    "log_amount",
-    "balance_fraction",
-    "sender_tx_1h",
-    "sender_tx_24h",
-    "sender_amount_24h",
-    "recipient_fanin_24h",
-    "amount_vs_7d_mean",
-    "orig_balance_delta",
-    "dest_balance_delta",
-    "type_CASH_IN",
-    "type_CASH_OUT",
-    "type_DEBIT",
-    "type_PAYMENT",
-    "type_TRANSFER",
-]
+from .paysim_features import FEATURE_COLUMNS, FEATURE_SETS
 
 
 @dataclass(frozen=True)
@@ -44,7 +29,7 @@ class PaySimSplit:
 def connect_duckdb(database: str | Path = ":memory:"):
     try:
         import duckdb
-    except ImportError as exc:
+    except ImportError as exc:  # pragma: no cover - exercised on GitHub runner
         raise RuntimeError("Full PaySim benchmark requires duckdb>=1.1") from exc
     con = duckdb.connect(str(database))
     con.execute("SET preserve_insertion_order=false")
@@ -180,12 +165,29 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
     val = _load_split(con, work, f"step >= {split.train_cut} AND step < {split.validation_cut}")
     test = _load_split(con, work, f"step >= {split.validation_cut}")
 
-    model = fit_lightgbm(train[FEATURE_COLUMNS], train.is_fraud, n_estimators=250)
-    pv_raw = model.predict_proba(val[FEATURE_COLUMNS])[:, 1]
-    cal = fit_sigmoid_calibrator(pv_raw, val.is_fraud)
-    pv = calibrate(cal, pv_raw)
-    pt = calibrate(cal, model.predict_proba(test[FEATURE_COLUMNS])[:, 1])
+    predictions = {}
+    ablation_rows = []
+    for model_name, features in FEATURE_SETS.items():
+        model = fit_lightgbm(train[features], train.is_fraud, n_estimators=250)
+        pv_raw = model.predict_proba(val[features])[:, 1]
+        cal = fit_sigmoid_calibrator(pv_raw, val.is_fraud)
+        pv = calibrate(cal, pv_raw)
+        pt = calibrate(cal, model.predict_proba(test[features])[:, 1])
+        predictions[model_name] = (pv, pt)
 
+        threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), pv, 0.001)
+        row = binary_metrics(test.is_fraud, pt, test.amount, threshold)
+        row.update({
+            "model": model_name,
+            "n_features": len(features),
+            "target_validation_legit_flag_rate": 0.001,
+        })
+        ablation_rows.append(row)
+
+    pd.DataFrame(ablation_rows).to_csv(out_dir / "model_ablation.csv", index=False)
+
+    # Full model operating frontier is retained for continuity with the first full-data run.
+    pv, pt = predictions["full_with_simulator_balances"]
     operating_rows = []
     for target in [0.0002, 0.0005, 0.001, 0.002, 0.005]:
         threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), pv, target)
@@ -206,17 +208,19 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
         "audit": audit,
         "split": {"train_cut": split.train_cut, "validation_cut": split.validation_cut},
         "source_rule": source_rule,
-        "feature_columns": FEATURE_COLUMNS,
+        "feature_sets": FEATURE_SETS,
+        "model_ablation_reference": {row["model"]: row for row in ablation_rows},
         "runtime_seconds": float(time.time() - started),
         "reference_operating_point": operating_rows[2],
         "limitations": [
             "PaySim is synthetic mobile-money data; performance is not a production estimate.",
-            "Balance fields may reflect simulator mechanics and can be unusually informative.",
+            "Balance fields may reflect simulator mechanics and can be unusually informative; transaction-only and history-only ablations are reported separately.",
             "Step is hourly; same-step transactions are treated as simultaneous and cannot see each other.",
         ],
     }
     with open(out_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
+    # Raw features and DuckDB database are transient runner products, not publication artifacts.
     work.unlink(missing_ok=True)
     con.close()
     (out_dir / "paysim.duckdb").unlink(missing_ok=True)
