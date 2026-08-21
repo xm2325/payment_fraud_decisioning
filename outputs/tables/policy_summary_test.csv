@@ -1,0 +1,2 @@
+review_threshold,block_threshold,test_fraud_value_prevented_rate,test_legitimate_friction_rate,test_review_rate,test_block_rate
+0.03,0.35,0.6715154380120489,0.045898179899762595,0.045501551189245086,0.008273009307135471

@@ -1,0 +1,9 @@
+[project]
+name = "payment-fraud-decisioning"
+version = "1.3.0"
+description = "Time-aware payment fraud decisioning, novelty detection, typology sizing, and monitoring"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
