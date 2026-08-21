@@ -17,6 +17,7 @@ from fraud_decisioning.modeling import calibrate, fit_lightgbm, fit_sigmoid_cali
 from fraud_decisioning.paysim_features import FEATURE_SETS
 from fraud_decisioning.paysim_full import (
     _load_split,
+    amount_type_rule_scores,
     audit_sql,
     connect_duckdb,
     determine_split,
@@ -45,6 +46,12 @@ def _json_safe(value):
     if isinstance(value, float) and not math.isfinite(value):
         return None
     return value
+
+
+def _with_ranker(frame: pd.DataFrame, ranker: str) -> pd.DataFrame:
+    out = frame.copy()
+    out.insert(0, "ranker", ranker)
+    return out
 
 
 def main() -> None:
@@ -97,17 +104,36 @@ def main() -> None:
     pd.DataFrame([threshold_cap]).to_csv(out_dir / "future_posthoc_threshold_cap.csv", index=False)
 
     # Deployable capacity contract: exact total alert budget, independent of labels.
-    capacity = ranked_capacity_frontier(
+    budgets = (10, 25, 50, 100)
+    model_capacity = ranked_capacity_frontier(
         test.is_fraud,
         future_score,
         test.amount,
         test.event_key,
-        budgets_per_10k=(10, 25, 50, 100),
+        budgets_per_10k=budgets,
     )
-    capacity.to_csv(out_dir / "ranked_capacity_frontier.csv", index=False)
+    model_capacity.to_csv(out_dir / "ranked_capacity_frontier.csv", index=False)
+
+    # Apples-to-apples baseline: identical exact review capacity, only the ranking score changes.
+    amount_rule_score = amount_type_rule_scores(test)
+    amount_rule_capacity = ranked_capacity_frontier(
+        test.is_fraud,
+        amount_rule_score,
+        test.amount,
+        test.event_key,
+        budgets_per_10k=budgets,
+    )
+    capacity_comparison = pd.concat(
+        [
+            _with_ranker(model_capacity, "relational_model"),
+            _with_ranker(amount_rule_capacity, "amount_type_rule"),
+        ],
+        ignore_index=True,
+    )
+    capacity_comparison.to_csv(out_dir / "ranked_capacity_comparison.csv", index=False)
 
     reference_capacity_per_10k = 50
-    capacity_windows = ranked_capacity_windows(
+    model_capacity_windows = ranked_capacity_windows(
         test.step,
         test.is_fraud,
         future_score,
@@ -116,6 +142,22 @@ def main() -> None:
         alerts_per_10k=reference_capacity_per_10k,
         n_windows=3,
     )
+    amount_rule_windows = ranked_capacity_windows(
+        test.step,
+        test.is_fraud,
+        amount_rule_score,
+        test.amount,
+        test.event_key,
+        alerts_per_10k=reference_capacity_per_10k,
+        n_windows=3,
+    )
+    capacity_windows = pd.concat(
+        [
+            _with_ranker(model_capacity_windows, "relational_model"),
+            _with_ranker(amount_rule_windows, "amount_type_rule"),
+        ],
+        ignore_index=True,
+    )
     capacity_windows.to_csv(out_dir / "ranked_capacity_windows_50_per_10k.csv", index=False)
 
     recipient = recipient_signal_audit(val, test, target)
@@ -123,8 +165,11 @@ def main() -> None:
 
     val_row = drift.loc[drift.period == "validation"].iloc[0]
     future_row = drift.loc[drift.period == "future_test"].iloc[0]
-    capacity_reference = capacity.loc[
-        capacity.target_alerts_per_10k == reference_capacity_per_10k
+    model_reference = model_capacity.loc[
+        model_capacity.target_alerts_per_10k == reference_capacity_per_10k
+    ].iloc[0]
+    baseline_reference = amount_rule_capacity.loc[
+        amount_rule_capacity.target_alerts_per_10k == reference_capacity_per_10k
     ].iloc[0]
     strongest = recipient.sort_values(["fraud_value_recall", "recall"], ascending=False).iloc[0]
     summary = {
@@ -141,14 +186,23 @@ def main() -> None:
             "future_fraud_value_recall": float(future_row.fraud_value_recall),
             "posthoc_threshold_cap": threshold_cap,
         },
-        "ranked_capacity_reference": capacity_reference.to_dict(),
         "ranked_capacity_reference_alerts_per_10k": reference_capacity_per_10k,
+        "ranked_capacity_reference": {
+            "relational_model": model_reference.to_dict(),
+            "amount_type_rule": baseline_reference.to_dict(),
+            "model_minus_rule_recall": float(model_reference.recall - baseline_reference.recall),
+            "model_minus_rule_fraud_value_recall": float(
+                model_reference.fraud_value_recall - baseline_reference.fraud_value_recall
+            ),
+            "model_minus_rule_precision": float(model_reference.precision - baseline_reference.precision),
+        },
         "strongest_recipient_signal_by_future_value_recall": strongest.to_dict(),
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
             "Scalar threshold targets are hard caps; tied scores can materially under-use a narrow budget.",
             "Ranked capacity routing fixes a total alert budget per 10,000 transactions without using fraud labels to set capacity.",
-            "Equal model scores are resolved only by a stable event key derived from non-label transaction fields; event_key is never a model feature.",
+            "The relational model and amount/type baseline are compared at identical exact alert capacities; only ranking scores differ.",
+            "Equal scores are resolved only by a stable event key derived from non-label transaction fields; event_key is never a model feature.",
             "The post-hoc future threshold cap is retrospective and diagnostic-only; it is not a deployable prospective result.",
             "Recipient signals use strict prior-step history; same-step PaySim transactions are simultaneous.",
             "PaySim has no confirmed mule-account label. Recipient activity results are investigation-signal audits, not mule-classification claims.",
