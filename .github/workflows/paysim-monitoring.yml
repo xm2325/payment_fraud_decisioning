@@ -69,6 +69,7 @@ jobs:
           cat results/paysim_monitoring/future_threshold_windows.csv
           cat results/paysim_monitoring/future_posthoc_threshold_cap.csv
           cat results/paysim_monitoring/ranked_capacity_frontier.csv
+          cat results/paysim_monitoring/ranked_capacity_comparison.csv
           cat results/paysim_monitoring/ranked_capacity_windows_50_per_10k.csv
           cat results/paysim_monitoring/recipient_signal_audit.csv
 
