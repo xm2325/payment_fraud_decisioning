@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from fraud_decisioning.modeling import calibrate, fit_lightgbm, fit_sigmoid_calibrator
@@ -24,6 +26,19 @@ from fraud_decisioning.paysim_monitoring import (
     posthoc_budget_match,
     recipient_signal_audit,
 )
+
+
+def _json_safe(value):
+    """Convert NumPy/Pandas scalars and non-finite floats to strict JSON values."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 
 def main() -> None:
@@ -105,7 +120,7 @@ def main() -> None:
         ]
     }
     with open(out_dir / "summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
+        json.dump(_json_safe(summary), f, indent=2, allow_nan=False)
 
     work.unlink(missing_ok=True)
     con.close()
