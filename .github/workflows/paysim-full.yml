@@ -8,6 +8,12 @@ on:
       - '.github/workflows/paysim-full.yml'
       - 'scripts/run_paysim_full.py'
       - 'src/fraud_decisioning/paysim_full.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/paysim-full.yml'
+      - 'scripts/run_paysim_full.py'
+      - 'src/fraud_decisioning/paysim_full.py'
 
 permissions:
   contents: write
@@ -66,6 +72,7 @@ jobs:
           retention-days: 30
 
       - name: Commit aggregate benchmark results
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
