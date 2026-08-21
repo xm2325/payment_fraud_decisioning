@@ -1,0 +1,2 @@
+period,n,fraud_n,fraud_rate,threshold,alerts,alert_rate,precision,recall,legit_flag_rate,legit_alerts_per_10k,budget_multiplier_vs_target,fraud_value_recall,score_p50,score_p90,score_p99,score_p999,diagnostic_only,may_underuse_budget_due_to_ties
+future_test_posthoc_threshold_cap,123580,1654,0.01338404272536009,0.2468694847364194,291,0.0023547499595403787,1.0,0.1759371221281741,0.0,0.0,0.0,0.4418153222109436,7.728175233584846e-07,0.007997576630104357,0.15470560385453555,0.8283528785106508,True,True
