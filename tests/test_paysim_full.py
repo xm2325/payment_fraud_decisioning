@@ -102,3 +102,26 @@ def test_binary_metrics_rejects_unbounded_rule_scores():
 
     with pytest.raises(ValueError, match="probabilities"):
         binary_metrics(np.array([0, 1]), np.array([0.2, 3.0]), np.array([1.0, 1.0]), 0.5)
+
+
+def test_threshold_at_legit_rate_respects_budget_with_boundary_ties():
+    import numpy as np
+    from fraud_decisioning.paysim_metrics import threshold_at_legit_rate
+
+    y = np.array([0] * 1000 + [1])
+    scores = np.array([0.0] * 998 + [0.9, 0.9] + [0.95])
+    threshold = threshold_at_legit_rate(y, scores, 0.001)
+    legit_flag_rate = np.mean(scores[y == 0] >= threshold)
+    assert legit_flag_rate <= 0.001
+    assert legit_flag_rate == 0.0
+
+
+def test_threshold_at_legit_rate_uses_available_budget_without_tie():
+    import numpy as np
+    from fraud_decisioning.paysim_metrics import threshold_at_legit_rate
+
+    y = np.array([0] * 1000 + [1])
+    legit_scores = np.linspace(0.0, 0.999, 1000)
+    scores = np.concatenate([legit_scores, [0.5]])
+    threshold = threshold_at_legit_rate(y, scores, 0.001)
+    assert np.mean(scores[y == 0] >= threshold) == 0.001
