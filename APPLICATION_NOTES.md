@@ -1,134 +1,98 @@
-# Moniepoint application notes — v1.4
+# Moniepoint fraud Data Scientist application notes — v1.6
 
-Use these results only as **portfolio / benchmark evidence**. The 120k stream and PaySim are synthetic; do not present any number as Moniepoint production impact, prevented loss or real analyst performance.
+Use these as evidence from a **portfolio case study**, not as claims of direct Moniepoint or production fraud experience.
 
-## Recommended CV bullets
+## Best CV bullets
 
-Use at most **two** bullets on a one-page CV. The strongest pairing for a fraud Data Scientist application is the full PaySim capacity bullet plus the emerging-fraud bullet.
+Use at most two on a one-page CV.
 
-### Option A — full PaySim + Fraud Ops capacity
+### Option A — full-data fraud decisioning + SQL
 
-Built and validated a time-aware fraud pipeline on the full **6.36M-row PaySim** benchmark using DuckDB point-in-time SQL and GitHub Actions; validation-only model selection chose relational features (**0.323 validation / 0.350 future PR-AUC**), and at a fixed **50 reviews per 10k transactions** the model increased fraud-case recall from **15.8% to 24.0%** and precision from **42.5% to 64.3%** versus an amount/type rule.
+Built a reproducible fraud-decisioning benchmark on the full **6.36M-row PaySim** mobile-money simulator using DuckDB point-in-time SQL, calibrated LightGBM and GitHub Actions; replaced a tie-sensitive threshold with exact review-capacity routing and, at **50 reviews/10k**, the balance-free relational model achieved **64.3% precision / 24.0% fraud recall / 71.7% fraud-value recall**, versus **42.5% / 15.8% / 70.4%** for a simple amount/type rule.
 
-This is the preferred PaySim CV bullet because model and baseline use **exactly the same analyst capacity**.
+### Option B — value-aware Fraud Ops routing
 
-### Option B — emerging fraud + Fraud Ops
+Designed a validation-selected review priority `P(fraud) × amount^alpha` under a fixed analyst budget; a pre-specified alpha grid selected **alpha=0.25** before future evaluation, and at **50 reviews/10k** the frozen PaySim policy increased fraud-value recall from **71.7% to 77.7%** versus pure risk ranking while retaining **61.8% precision and 23.0% fraud-case recall**.
 
-Stress-tested a fraud pattern absent from all supervised training/validation data: the classifier had **0% unseen-attack recall**, while a label-free tail detector reached **93.3% recall at 0.86% legitimate flag rate**; a fixed exploit-explore queue preserved **80.9% fraud-value recall** at 200 reviews/10k while adding **40.2% new-attack recall**.
+### Option C — surge-capacity governance
 
-### Option C — feedback + label maturity
+Stress-tested a score-load capacity guardrail on the full **6.36M-row PaySim** benchmark: the frozen model showed a **2.41× validation score-tail load** in the final future window; under a stated **50→100 reviews/10k** flex-capacity scenario, fraud-case recall increased **12.8%→25.5%** and fraud-value recall **40.8%→81.4%** while precision remained **99.3%**.
 
-Built an as-of fraud learning loop linking anomaly alerts, analyst review and retraining: **100 anomaly-ranked reviews yielded 95 simulated novel confirmations and raised later novel-fraud recall from 0% to 89.3%**; separately showed that an invalid instant-label backtest produced **88.4%** novel recall where a 7-day mature-label view remained at **0%**.
+For Option C, keep wording such as **PaySim benchmark**, **stress-tested** and **scenario**. Do not turn the assumed 50→100 capacity into a staffing recommendation.
 
-Option C must retain wording such as `simulated` or `case study` because the confirmation yield is intentionally strong in the controlled attack design.
+### Option D — emerging fraud + feedback loop
 
-### Optional operations bullet
+Stress-tested a fraud pattern deliberately absent from supervised training/validation data: the classifier had **0% unseen-attack recall**, while a label-free tail detector reached **93.3% recall at 0.86% legitimate flag rate**; anomaly-ranked analyst feedback then supplied simulated confirmations for later supervised retraining.
 
-Built a backlog-aware two-lane fraud-review controller that converts model/anomaly alerts into a capacity-feasible analyst queue; in a **120k synthetic stress test**, a fixed 6-review/hour scenario accepted **88.3%** of candidates at 1x traffic, while 1.5x traffic reduced acceptance to **67.8%** and novel-fraud recall to **60.3%**, quantifying the discovery cost of protecting review capacity.
+## Strong interview stories
 
-The 6-review/hour setting and traffic multipliers are scenario assumptions, not Moniepoint staffing estimates.
+### 1. A high AUC can be a data problem
 
-## Full PaySim evidence to discuss in interview
+PaySim balance derivatives lift PR-AUC to around **0.995**. Instead of using that as a headline, the project treats it as evidence that simulator accounting mechanics are unusually informative and reports a balance-free benchmark. This is a useful answer to “How do you check leakage or unrealistic features?”
 
-### 1. Model selection is genuinely future-safe
+### 2. An operating threshold is not the same as an operations budget
 
-The full workflow verifies **6,362,620 transactions / 8,213 fraud cases / steps 1--743**, computes strict prior-step features in DuckDB, then uses train 1--445, validation 446--594 and future test 595--743.
+Tree scores have ties. A threshold chosen for a nominal narrow false-positive rate can flag a whole tied block or under-use capacity if the threshold is moved above it. The project therefore separates:
 
-Balance-free validation PR-AUC:
+- scalar thresholds for diagnostic/governance checks;
+- exact top-k routing for Fraud Ops capacity.
 
-- transaction only: **0.2790**;
-- transaction + history: **0.2774**;
-- transaction + relational: **0.3228**.
+Equal scores are broken only with a stable non-label event key.
 
-The relational model is selected before the future period is evaluated and reaches future PR-AUC **0.3497**.
+### 3. Case recall and fraud-value recall are different business objectives
 
-### 2. Do not use the old v1.3 operating-point numbers
+At 50 reviews/10k on future PaySim:
 
-Earlier notes used **60.1% precision / 25.9% recall / 80.7% fraud-value recall** from a narrow validation quantile threshold. v1.4 found that large score ties made that alert-budget contract unsafe.
+- pure `P(fraud)` gives **64.3% precision / 24.0% case recall / 71.7% value recall**;
+- `P(fraud) × amount` gives **56.4% / 21.0% / 77.0%**;
+- validation-selected `alpha=0.25` gives **61.8% / 23.0% / 77.7%**.
 
-Those values are **superseded** and should not appear in CV, cover letter or interview answers.
+The selected compromise is preferable to saying one ranking score is universally best. Fraud value is highly concentrated in PaySim, so value recall is always discussed beside case recall and an amount-based baseline.
 
-The corrected scalar threshold is retained only as a diagnostic; exact analyst capacity is the operational contract.
+### 4. Model quality and review capacity are different failure modes
 
-### 3. Compare model and rule at identical review capacity
+In the final PaySim window the fixed 50/10k queue has **100% precision** but only **12.8% fraud-case recall**. The queue is saturated with true fraud; improving classification precision cannot create more review slots. This motivates a separate capacity-control layer.
 
-At **50 alerts per 10,000 transactions** on the untouched future test:
+### 5. A monitoring trigger still needs governance sensitivity
 
-| Ranker | Precision | Fraud recall | Fraud-value recall |
-|---|---:|---:|---:|
-| relational model probability | **64.34%** | **24.00%** | 71.67% |
-| probability × amount | 56.40% | 21.04% | **76.96%** |
-| amount/type rule | 42.46% | 15.84% | 70.43% |
+The pre-specified 1.5× score-tail trigger fires in all three future windows, but the first is only **1.502×**. A sensitivity grid shows that 2.0× would fire only in the final window and 2.5× would never fire. Do not pick 2.0× retrospectively and call it optimal; explain that a production trigger needs business-owned capacity costs, mature labels and prospective validation.
 
-The strongest modelling claim is therefore **case capture and precision at the same review cost**, not “ML catches 80% of fraud value”.
+### 6. Negative fraud features should stay negative
 
-### 4. Fraud probability and expected loss are different objectives
+Standalone PaySim recipient/fan-in signals are near random and get 0% future fraud recall in the audited setup. Because PaySim has no confirmed mule label, the project keeps these as investigation signals and does not invent a mule-detection claim.
 
-At 50/10k, `P(fraud) × amount` gives up **2.96 percentage points** of case recall versus probability ranking but gains **5.28 points** of fraud-value recall.
+### 7. Label collection changes what the model learns
 
-At 100/10k, expected-loss ranking reaches **42.51% precision / 31.74% recall / 87.37% value recall**, slightly ahead of pure probability ranking on all three metrics in that future period.
+In the internal synthetic verification-bias stress test, risk-triggered follow-up over-represents fraud and under-covers some typologies. A random audit lane improves coverage. The lesson is to treat investigation policy as part of the data-generating process, not simply assume observed labels are representative.
 
-Good interview phrasing: “I would not choose the queue score from model AUC alone. Fraud Ops needs an explicit objective: maximise confirmed case yield, expected loss coverage, customer experience, or a governed combination.”
+### 8. Delayed labels make temporal evaluation non-negotiable
 
-Do not call `P(fraud) × amount` prevented loss. It is a prioritisation heuristic and assumes the model probabilities and transaction amounts are meaningful for ranking.
+A 7-day mature-label view misses the controlled new attack while an invalid instant-label oracle appears dramatically better. Use this to explain why fraud model retraining, backtesting and performance monitoring must respect chargeback/investigation maturity.
 
-### 5. Capacity saturation can look like model failure
+## Take-home / technical interview preparation
 
-At a fixed 50/10k, probability-ranked fraud-value recall across the three future windows is **74.3% → 81.0% → 40.8%**. In the last window, fraud prevalence rises to **3.86%** and all 71 reviewed cases are fraud, but case recall is only **12.8%**.
+Use `TAKE_HOME_WALKTHROUGH.md` and the SQL files to practise:
 
-That is a useful interview example: precision can be 100% while the operation still misses most fraud because demand exceeds analyst capacity.
-
-### 6. Negative recipient result is worth keeping
-
-PaySim does not have a confirmed mule-account label. Standalone recipient fan-in / recipient-intensity signals have future AUC around **0.47--0.49**, and validation-selected thresholds recover **0% future fraud**.
-
-Good interview phrasing: “I tested the intuitive mule-style recipient signals independently and they did not generalise, so I kept them as investigation evidence rather than inventing a mule-detection claim.”
-
-## Controlled 120k findings worth discussing
-
-### Feature selection is empirical
-
-Adding network-style history to the supervised model lowers known-fraud PR-AUC from **0.640 to 0.635**. Those signals therefore stay in anomaly/investigation rather than being forced into the supervised champion.
-
-### Fraud Ops has two learning goals
-
-At 200 reviews/10k, model-only routing gives **81.8% value recall / 0% novel recall**. A governance-fixed 80/20 exploit-explore split gives **80.9% / 40.2%**.
-
-### Anomaly detection should create labels
-
-In the controlled feedback experiment, 10 confirmed emerging cases raise later novel recall to **38.0%**; 100 reviews yielding 95 simulated novel cases raise it to **89.3%**.
-
-### Verification bias matters
-
-Risk-triggered follow-up produces a labelled training sample with **8.24% fraud prevalence** even though the full historical population is **1.13%**. Known-fraud PR-AUC is **0.584** and mule-cashout recall **11.1%**, versus **0.646 / 28.6%** with full labels.
-
-### Policy numbers depend on assumptions
-
-Across four stated efficacy/cost scenarios, future fraud-value prevention ranges **65.6--84.3%** and legitimate friction **2.72--4.88%**. The reference 78.5% is therefore a simulator scenario result, not a business claim.
-
-### Precision is base-rate dependent
-
-Holding measured TPR/FPR fixed, expected alert precision is only about **3.0%** at 0.1% fraud prevalence and **23.8%** at 1%. Synthetic observed precision should not be used directly for production staffing.
-
-### SQL correctness is tested, not decorative
-
-The repository executes a SQLite point-in-time reference query and checks Python parity, including equal timestamps. The full PaySim workflow separately uses strict prior-step DuckDB windows and deterministic non-label event keys.
+- point-in-time rolling aggregates;
+- equal-timestamp / same-step leakage prevention;
+- recipient/fan-in investigations;
+- rule-vs-model comparisons at the same review budget;
+- fixed-threshold versus exact-capacity semantics;
+- temporal splits and label maturity;
+- typology sizing by transaction count and value;
+- explaining why a negative feature audit is still a useful result.
 
 ## Claims not to make
 
 Do not claim:
 
-- real Moniepoint data;
-- real prevented or saved loss;
-- a real A/B treatment effect;
-- Moniepoint fraud prevalence, traffic or analyst capacity;
-- a measured production latency/SLA;
-- a real analyst-confirmation rate;
-- confirmed mule-account detection from PaySim;
-- simulator balance-field PR-AUC (~0.995) as a realistic fraud headline.
+- real Moniepoint data or direct Moniepoint impact;
+- real prevented loss or saved money;
+- actual Moniepoint fraud prevalence, traffic or analyst staffing;
+- a production SLA measured from this project;
+- confirmed PaySim mule accounts;
+- that the 1.5×, 2.0× or 2.5× score-load trigger is production-optimal;
+- that extra review capacity can be created instantly;
+- that PaySim precision/recall will transfer to another market.
 
-PaySim may be described as a **public synthetic external benchmark** used to demonstrate scalable point-in-time feature engineering, future-safe evaluation and Fraud Ops routing.
-
-## Short interview summary
-
-“I treated fraud detection as a decisioning and operations problem rather than an AUC exercise. On the full 6.36M-row PaySim benchmark I selected the balance-free relational model only on validation data, then compared model probability, expected-loss and an interpretable amount rule at identical analyst capacities. At 50 reviews per 10k, model probability raised precision from 42.5% to 64.3% and case recall from 15.8% to 24.0% versus the amount rule; ranking by probability times amount increased value recall further to 77.0%, but with lower case recall. The project also stress-tests unseen fraud, delayed labels, verification bias and queue saturation, and keeps negative recipient-signal results rather than claiming unsupported mule detection.”
+Safe framing is: **public synthetic external benchmark + controlled synthetic stress tests + reproducible decision-policy engineering**.
