@@ -66,8 +66,10 @@ jobs:
         run: |
           cat results/paysim_monitoring/summary.json
           cat results/paysim_monitoring/threshold_budget_drift.csv
-          cat results/paysim_monitoring/future_budget_windows.csv
-          cat results/paysim_monitoring/future_budget_rethreshold_oracle.csv
+          cat results/paysim_monitoring/future_threshold_windows.csv
+          cat results/paysim_monitoring/future_posthoc_threshold_cap.csv
+          cat results/paysim_monitoring/ranked_capacity_frontier.csv
+          cat results/paysim_monitoring/ranked_capacity_windows_50_per_10k.csv
           cat results/paysim_monitoring/recipient_signal_audit.csv
 
       - uses: actions/upload-artifact@v4
