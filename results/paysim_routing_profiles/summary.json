@@ -1,0 +1,84 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "split": {
+    "train_cut": 446,
+    "validation_cut": 595
+  },
+  "model": "transaction_plus_relational",
+  "selection_capacity_alerts_per_10k": 50,
+  "alpha_grid": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "selection_rule": {
+    "case_first": "max validation fraud-case recall, then precision/value recall",
+    "balanced": "max validation harmonic mean of case recall and fraud-value recall, then precision",
+    "value_first": "max validation fraud-value recall, then precision/case recall",
+    "final_tie_break": "lower alpha"
+  },
+  "selected_profiles": [
+    {
+      "profile": "case_first",
+      "alpha": 0.25,
+      "recall": 0.28286082474226804,
+      "fraud_value_recall": 0.7930046110791481,
+      "precision": 0.3850877192982456
+    },
+    {
+      "profile": "balanced",
+      "alpha": 0.25,
+      "recall": 0.28286082474226804,
+      "fraud_value_recall": 0.7930046110791481,
+      "precision": 0.3850877192982456
+    },
+    {
+      "profile": "value_first",
+      "alpha": 0.25,
+      "recall": 0.28286082474226804,
+      "fraud_value_recall": 0.7930046110791481,
+      "precision": 0.3850877192982456
+    }
+  ],
+  "future_reference_50_per_10k": {
+    "case_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "balanced": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "value_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    }
+  },
+  "runtime_seconds": 66.0665397644043,
+  "interpretation_boundaries": [
+    "Alpha values are pre-specified before future-test evaluation; selected profiles use validation labels only.",
+    "Alpha=0 is pure fraud-probability ranking and alpha=1 is probability-times-amount expected-loss-style prioritisation.",
+    "Intermediate alpha values are routing-policy trade-offs, not new predictive model features.",
+    "The balanced profile uses an explicit validation objective rather than tuning alpha on future performance.",
+    "All profiles use the same exact review capacity and stable non-label event-key tie-breaker.",
+    "Future alpha-grid results are diagnostic sensitivity only and cannot be used to re-select the profile.",
+    "PaySim is synthetic mobile-money data; results are benchmark evidence, not production impact or prevented loss."
+  ]
+}
