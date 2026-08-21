@@ -43,4 +43,8 @@ FEATURE_SETS = {
     "full_with_simulator_balances": FEATURE_COLUMNS,
 }
 
-BALANCE_FREE_REFERENCE = "transaction_plus_relational"
+BALANCE_FREE_CANDIDATES = [
+    "transaction_only",
+    "transaction_plus_history",
+    "transaction_plus_relational",
+]
