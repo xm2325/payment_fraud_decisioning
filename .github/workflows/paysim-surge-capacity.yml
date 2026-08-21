@@ -52,6 +52,7 @@ jobs:
         run: |
           cat results/paysim_surge_capacity/surge_summary.json
           cat results/paysim_surge_capacity/surge_capacity_windows.csv
+          cat results/paysim_surge_capacity/surge_trigger_sensitivity.csv
       - uses: actions/upload-artifact@v4
         with:
           name: paysim-surge-capacity-results
