@@ -228,7 +228,6 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
 
     pd.DataFrame(ablation_rows).to_csv(out_dir / "model_ablation.csv", index=False)
 
-    # Select the balance-free champion on validation only; simulator balances remain sensitivity-only.
     balance_free_rows = [r for r in ablation_rows if r["model"] in BALANCE_FREE_CANDIDATES]
     balance_free_reference = max(balance_free_rows, key=lambda r: r["validation_pr_auc"])["model"]
     pv, pt = predictions[balance_free_reference]
@@ -242,7 +241,6 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
 
     source_rule = rule_metrics(test.is_fraud, test.is_flagged_fraud, test.amount)
 
-    # Interpretable amount/type rule: threshold is chosen on validation only.
     val_rule_score = np.where(
         (val["type_TRANSFER"].to_numpy() + val["type_CASH_OUT"].to_numpy()) > 0,
         val["log_amount"].to_numpy(),
@@ -254,7 +252,8 @@ def run_full_benchmark(parquet_glob: str | Path, out_dir: str | Path) -> dict:
         -1e9,
     )
     simple_rule_threshold = threshold_at_legit_rate(val.is_fraud.to_numpy(), val_rule_score, 0.001)
-    simple_rule = binary_metrics(test.is_fraud, test_rule_score, test.amount, simple_rule_threshold)
+    simple_rule_pred = (test_rule_score >= simple_rule_threshold).astype(int)
+    simple_rule = rule_metrics(test.is_fraud, simple_rule_pred, test.amount)
     simple_rule["threshold_log_amount"] = float(simple_rule_threshold)
     simple_rule["target_validation_legit_flag_rate"] = 0.001
 
