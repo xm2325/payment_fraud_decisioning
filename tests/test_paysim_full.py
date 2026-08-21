@@ -11,6 +11,16 @@ def test_feature_sql_uses_strict_prior_step_windows():
         assert feature in sql
 
 
+def test_feature_sql_builds_non_label_event_key():
+    sql = feature_sql("/tmp/paysim-*.parquet")
+    assert "AS event_key" in sql
+    hash_expr = sql.split("AS event_key", 1)[0].rsplit("hash(", 1)[1]
+    assert "nameOrig" in hash_expr
+    assert "nameDest" in hash_expr
+    assert "isFraud" not in hash_expr
+    assert "isFlaggedFraud" not in hash_expr
+
+
 def test_canonical_audit_contract():
     audit = dict(CANONICAL_PAYSIM)
     audit["fraud_rate"] = audit["fraud_n"] / audit["n"]
