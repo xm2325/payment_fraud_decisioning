@@ -42,10 +42,10 @@ def test_robustness_summary_uses_worst_and_mean_window_metrics():
     summary = robustness_summary(frame)
     row0 = summary.loc[summary.alpha == 0.0].iloc[0]
     row5 = summary.loc[summary.alpha == 0.5].iloc[0]
-    assert row0.min_recall == 0.4
-    assert row0.mean_recall == 0.6
-    assert row5.min_recall == 0.6
-    assert row5.recall_range == 0.0
+    assert np.isclose(row0.min_recall, 0.4)
+    assert np.isclose(row0.mean_recall, 0.6)
+    assert np.isclose(row5.min_recall, 0.6)
+    assert np.isclose(row5.recall_range, 0.0)
 
 
 def test_robust_profile_selection_prefers_worst_window_stability():
