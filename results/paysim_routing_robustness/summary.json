@@ -1,0 +1,120 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "split": {
+    "train_cut": 446,
+    "validation_cut": 595
+  },
+  "model": "transaction_plus_relational",
+  "selection_capacity_alerts_per_10k": 50,
+  "alpha_grid": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "validation_windows": 3,
+  "robust_selection_rule": {
+    "case_first": "max worst-window case recall, then mean recall/precision/value recall",
+    "balanced": "max worst-window case/value harmonic mean, then mean harmonic mean/precision",
+    "value_first": "max worst-window fraud-value recall, then mean value recall/precision/case recall",
+    "final_tie_break": "lower alpha"
+  },
+  "selection_comparison": [
+    {
+      "selection": "aggregate_validation",
+      "profile": "case_first",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    },
+    {
+      "selection": "aggregate_validation",
+      "profile": "balanced",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    },
+    {
+      "selection": "aggregate_validation",
+      "profile": "value_first",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    },
+    {
+      "selection": "robust_validation_windows",
+      "profile": "case_first",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    },
+    {
+      "selection": "robust_validation_windows",
+      "profile": "balanced",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    },
+    {
+      "selection": "robust_validation_windows",
+      "profile": "value_first",
+      "alpha": 0.25,
+      "amount_scale": 70390.74
+    }
+  ],
+  "future_reference_50_per_10k": {
+    "aggregate_validation:case_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "aggregate_validation:balanced": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "aggregate_validation:value_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "robust_validation_windows:case_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "robust_validation_windows:balanced": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    },
+    "robust_validation_windows:value_first": {
+      "alpha": 0.25,
+      "precision": 0.6175040518638574,
+      "fraud_recall": 0.23035066505441354,
+      "fraud_value_recall": 0.7770207781145293,
+      "legitimate_alerts_per_10k": 19.356002821383463
+    }
+  },
+  "runtime_seconds": 68.9779760837555,
+  "interpretation_boundaries": [
+    "Both aggregate and robust routing profiles use validation labels only; future labels never select alpha.",
+    "Robust selection prioritises the weakest contiguous validation window before average validation performance.",
+    "The amount scale is fitted once on the full validation period and frozen for all validation windows and future evaluation.",
+    "A robust profile can trade average validation performance for temporal stability; this is a routing-policy choice, not a new predictive model.",
+    "All comparisons use the same exact review capacities and stable non-label event-key tie-breaker.",
+    "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact or prevented loss."
+  ]
+}

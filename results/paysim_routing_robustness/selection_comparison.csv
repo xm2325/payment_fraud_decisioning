@@ -1,0 +1,7 @@
+selection,profile,alpha,amount_scale
+aggregate_validation,case_first,0.25,70390.74
+aggregate_validation,balanced,0.25,70390.74
+aggregate_validation,value_first,0.25,70390.74
+robust_validation_windows,case_first,0.25,70390.74
+robust_validation_windows,balanced,0.25,70390.74
+robust_validation_windows,value_first,0.25,70390.74
