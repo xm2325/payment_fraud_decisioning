@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-app = FastAPI(title="Fraud Decisioning API", version="1.6.0")
+app = FastAPI(title="Fraud Decisioning API", version="1.7.0")
 
 class RiskRequest(BaseModel):
     risk_probability: float
