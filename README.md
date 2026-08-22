@@ -4,12 +4,12 @@ A fraud data-science portfolio project built around **temporal modelling, point-
 
 The repository has two evidence layers:
 
-- a transparent **120,000-transaction synthetic payment stream** used for controlled stress tests such as unseen attacks, analyst feedback and label delay;
-- a reproducible **6,362,620-row PaySim benchmark** used for large-scale point-in-time SQL, model selection and Fraud Ops capacity routing.
+- a transparent **120,000-transaction synthetic payment stream** for controlled stress tests such as unseen attacks, analyst feedback and label delay;
+- a reproducible **6,362,620-row PaySim benchmark** for large-scale point-in-time SQL, model selection and Fraud Ops routing.
 
-Neither source is Moniepoint production data, and no result below is a production impact or saved-loss claim.
+Neither source is Moniepoint production data. No result below is a production impact, saved-loss or staffing claim.
 
-## v1.4 result snapshot
+## v1.6 result snapshot
 
 ### Controlled 120k stress tests
 
@@ -19,7 +19,6 @@ Neither source is Moniepoint production data, and no result below is a productio
 - After **100 anomaly-ranked reviews** produce 95 simulated novel confirmations, retrained future novel-fraud recall rises from **0% to 89.3%**.
 - A 7-day mature-label view remains at **0% novel recall**, while an invalid instant-label oracle reaches **88.4%**, demonstrating label-latency leakage.
 - Verification bias matters: risk-triggered labels alone give known-fraud PR-AUC **0.584** and mule-cashout recall **11.1%**, versus **0.646 / 28.6%** with full historical labels.
-- Fraud Ops capacity is stress-tested separately from model quality: a fixed 6-review/hour scenario is feasible at 1x traffic but becomes overloaded as traffic rises. These staffing values are scenario assumptions, not recommendations.
 
 ### Full 6.36M-row PaySim benchmark
 
@@ -38,72 +37,86 @@ The balance-derived row is a simulator-mechanics sensitivity only. The locked ba
 
 ## Fraud Ops contract: exact review capacity
 
-v1.4 replaced a brittle scalar-threshold operating point with an explicit **alerts-per-10,000-transactions** capacity contract. Large LightGBM score ties made the old narrow quantile threshold unsafe; the previously documented v1.3 **60.1% precision / 25.9% recall / 80.7% fraud-value recall** operating-point headline is superseded and should not be reused.
+Large LightGBM score ties make a narrow scalar threshold unsuitable for precise analyst-capacity control. v1.4 therefore replaced the old quantile operating point with an explicit **alerts-per-10,000-transactions** contract. Equal model scores are resolved only by a stable non-label `event_key`.
 
-For probability-ranked review queues on the future PaySim period:
+For probability-ranked future queues:
 
 | Reviews / 10k | Precision | Fraud recall | Fraud-value recall |
 |---:|---:|---:|---:|
-| 10 | **100.0%** | **7.44%** | 32.62% |
-| 25 | **96.75%** | **18.02%** | 46.39% |
+| 10 | **100.0%** | 7.44% | 32.62% |
+| 25 | **96.75%** | 18.02% | 46.39% |
 | 50 | **64.34%** | **24.00%** | 71.67% |
-| 100 | 41.05% | 30.65% | 83.33% |
+| 100 | 41.05% | 30.65% | **83.33%** |
 
-Equal model scores are resolved only by a stable non-label `event_key`; labels are never used to define queue capacity.
+The previously documented v1.3 **60.1% precision / 25.9% recall / 80.7% value-recall** narrow-threshold headline is superseded and should not be reused.
 
 ## Same capacity, different business objectives
 
-The strongest v1.4 operational result is not a single winning score. The project compares three rankers using **exactly the same review slots**:
-
-1. calibrated fraud probability — prioritises likely fraud cases;
-2. `P(fraud) × amount` — a simple expected-loss prioritisation heuristic;
-3. `TRANSFER/CASH_OUT + amount` — an interpretable baseline.
-
-At **50 reviews / 10k**:
+At the same **50 reviews / 10k**, three rankers expose a real policy trade-off:
 
 | Ranker | Precision | Fraud recall | Fraud-value recall |
 |---|---:|---:|---:|
-| model probability | **64.34%** | **24.00%** | 71.67% |
-| probability × amount | 56.40% | 21.04% | **76.96%** |
+| calibrated fraud probability | **64.34%** | **24.00%** | 71.67% |
+| `P(fraud) × amount` | 56.40% | 21.04% | **76.96%** |
 | amount/type rule | 42.46% | 15.84% | 70.43% |
 
-Probability ranking is better for clean case capture; expected-loss ranking gives up **2.96 percentage points** of case recall to gain **5.28 points** of value recall. At 100/10k, expected-loss ranking reaches **42.51% precision / 31.74% case recall / 87.37% value recall**, slightly ahead of probability ranking on all three metrics in that future period.
+Probability ranking is better for clean case capture; expected-loss-style ranking gives up **2.96 percentage points** of case recall to gain **5.28 points** of value recall. `P(fraud) × amount` is a prioritisation heuristic, not prevented-loss estimation.
 
-`P(fraud) × amount` is a queue-prioritisation heuristic, not prevented-loss estimation.
+## v1.5 routing profile: validation-selected compromise
+
+Rather than choose the business objective after looking at future results, v1.5 pre-specifies
+
+`priority = P(fraud) × (amount / validation_median_amount)^alpha`
+
+for `alpha ∈ {0, 0.25, 0.5, 0.75, 1}` and selects alpha using validation labels only. At 50 reviews/10k, **alpha=0.25** wins the declared case-first, balanced and value-first validation objectives.
+
+Frozen on untouched future data, alpha=0.25 gives **61.75% precision, 23.04% fraud-case recall and 77.70% fraud-value recall** at 50 reviews/10k: a deliberate compromise between pure probability and pure expected-loss-style ranking.
+
+## v1.6 robustness check: does alpha=0.25 survive time slicing?
+
+v1.6 divides validation into three contiguous time windows and re-selects routing profiles by **worst-window performance first**, without using future labels. The result is confirmatory: all three robust profiles again select **alpha=0.25**.
+
+At 50 reviews/10k on validation windows:
+
+| Alpha | Worst-window case recall | Worst-window value recall | Worst-window balanced H-mean | Case-recall range |
+|---:|---:|---:|---:|---:|
+| 0.00 | 25.47% | 69.75% | 0.3731 | 4.18 pp |
+| **0.25** | **27.69%** | **77.57%** | **0.4081** | 1.34 pp |
+| 0.50 | 26.89% | 77.36% | 0.3992 | 1.01 pp |
+| 0.75 | 26.89% | 77.36% | 0.3992 | 1.01 pp |
+| 1.00 | 26.89% | 77.36% | 0.3992 | **0.63 pp** |
+
+Alpha=1 is slightly steadier by range alone, but alpha=0.25 has the strongest weakest-window case recall, value recall and balanced objective. Because aggregate and robust selection agree, **v1.6 does not claim a new future-test gain**; it strengthens the validation evidence for the existing policy.
 
 ## Capacity saturation is different from model failure
 
-At a fixed **50 reviews / 10k**, probability-ranked fraud-value recall across three future windows is **74.34% → 80.99% → 40.76%**. In the last window fraud prevalence rises to **3.86%**. All 71 admitted cases are fraud, yet fraud-case recall is only **12.77%**.
-
-That is a queue-capacity problem rather than a false-positive problem. In the same high-fraud window, value recall is **40.76%** for probability ranking, **61.97%** for probability × amount and **64.78%** for the amount/type rule, showing why ranking objective and capacity monitoring must be separated.
+At 50 reviews/10k, the alpha=0.25 future value recall is **75.45% → 82.30% → 40.76%** across three future windows. In the last window all 71 admitted cases are fraud, yet case recall is only **12.77%**. A robust ranker cannot compensate for analyst capacity that is too small for the realised fraud arrival rate.
 
 ## Recipient / mule audit: retained negative evidence
 
-PaySim has no confirmed mule-account label. Standalone prior-step recipient signals therefore remain investigation diagnostics rather than mule classifiers. On future test, recipient fan-in AUC is about **0.493**, the composite recipient-intensity score about **0.467**, and validation-selected recipient thresholds recover **0% future fraud**.
-
-The negative result stays in the repository rather than being hidden.
+PaySim has no confirmed mule-account label. Standalone prior-step recipient signals remain investigation diagnostics rather than mule classifiers. On future test, recipient fan-in AUC is about **0.493**, the composite recipient-intensity score about **0.467**, and validation-selected recipient thresholds recover **0% future fraud**. The negative result stays visible.
 
 ## Architecture
 
 ```text
 transaction
-   -> point-in-time transaction + history features
+   -> point-in-time transaction + relational history
    -> calibrated supervised risk model ----------> probability queue
-   -> risk × amount ------------------------------> value-priority queue
+   -> alpha-weighted probability × amount --------> governed compromise queue
    -> label-free anomaly channel -----------------> exploration queue
    -> approve / review / block + reason codes
    -> analyst outcome / mature fraud label
-   -> as-of training set + feedback retraining
-   -> immediate + matured-label monitoring
+   -> as-of retraining + immediate/mature-label monitoring
 ```
 
-## Point-in-time and reproducibility controls
+## Reproducibility controls
 
-- Python processes equal-timestamp simulator events as a batch, so same-time events cannot see one another.
+- Equal-timestamp simulator events cannot use one another as history.
 - `sql/sqlite_point_in_time_features.sql` is executed in tests and checked against Python features.
 - Full PaySim features use strict prior-step DuckDB windows.
-- A stable non-label `event_key` makes full-data split loading and capacity tie-breaking deterministic.
-- Independent full-benchmark and monitoring workflows reproduce the relational model outputs to numerical precision.
+- A stable non-label `event_key` makes full-data loading and capacity tie-breaking deterministic.
+- Model, routing alpha and robust-routing selection all use validation-only contracts before future evaluation.
+- Full PaySim benchmark, monitoring, routing-profile and routing-robustness workflows are executable in GitHub Actions; raw PaySim rows are not committed.
 
 ## Run
 
@@ -120,29 +133,28 @@ Fast CI-style run:
 FRAUD_N=30000 python scripts/run_all.py
 ```
 
-Full PaySim benchmark and monitoring are run in GitHub Actions; raw PaySim rows are not committed. Aggregate outputs are written under `results/paysim_full/` and `results/paysim_monitoring/` on main-branch runs.
-
 ## What this repo answers
 
 1. Which future transactions are high risk?
 2. How does point-in-time feature engineering change fraud ranking?
-3. How should model selection avoid future-test leakage?
+3. How should model and routing-policy selection avoid future-test leakage?
 4. How many cases and how much fraud value can be covered at a fixed analyst capacity?
 5. When should a queue prioritise fraud probability versus expected fraud value?
-6. What happens when fraud arrival rate exceeds analyst capacity?
-7. Can label-free signals surface an attack absent from model training?
-8. How should a fixed review budget be split between exploitation and emerging-pattern discovery?
-9. What changes when fraud labels mature days later?
-10. Can anomaly investigations produce useful retraining labels?
+6. Is a validation-selected routing compromise stable across validation time windows?
+7. What happens when fraud arrival rate exceeds analyst capacity?
+8. Can label-free signals surface an attack absent from model training?
+9. How should review capacity be split between exploitation and emerging-pattern discovery?
+10. What changes when fraud labels mature days later?
 11. How can investigation-driven labels create verification bias?
-12. How do fraud prevalence and calibration assumptions change precision planning?
-13. Which apparently fraud-relevant features fail when tested independently?
+12. Which apparently fraud-relevant features fail when tested independently?
 
 ## Key evidence
 
 - `RESULTS.md` — complete result narrative and boundaries.
-- `PAYSIM_BENCHMARK.md` — 6.36M-row external benchmark contract.
-- `PAYSIM_MONITORING.md` — scalar-threshold diagnostic, exact-capacity routing and future-window monitoring.
+- `PAYSIM_BENCHMARK.md` — 6.36M-row benchmark contract.
+- `PAYSIM_MONITORING.md` — exact-capacity and temporal monitoring contract.
+- `PAYSIM_ROUTING_PROFILES.md` — validation-selected probability/value routing compromise.
+- `PAYSIM_ROUTING_ROBUSTNESS.md` — validation-window worst-case robustness audit.
 - `APPLICATION_NOTES.md` — safe CV/interview wording.
 - `DATA_PROVENANCE.md` — data-source boundaries.
 - `MITIGATION_PLAYBOOK.md` — intervention and operations framing.
@@ -154,4 +166,4 @@ Core generated tables from the 120k simulator live under `outputs/tables/`; full
 
 The default simulator contains three known fraud types and one future-only shared-device microburst attack. That attack is intentionally abnormal in historical tail/velocity signals, so anomaly and feedback performance are controlled method stress tests rather than real discovery-rate estimates.
 
-PaySim is synthetic mobile-money data. Real fraud labels, chargeback maturity, customer outcomes, intervention efficacy, review capacity, device/network quality and production prevalence would all be required before making deployment or financial-impact claims.
+PaySim is synthetic mobile-money data. Real fraud labels, chargeback maturity, customer outcomes, intervention efficacy, review capacity, device/network quality and production prevalence would all be required before deployment or financial-impact claims.
