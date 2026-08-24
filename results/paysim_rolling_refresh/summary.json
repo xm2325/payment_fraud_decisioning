@@ -1,0 +1,132 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "outer_split": {
+    "train_cut": 446,
+    "future_cut": 595
+  },
+  "base_stage_lengths": {
+    "calibration_n_steps": 74,
+    "policy_n_steps": 75,
+    "test_window_n_steps": 50
+  },
+  "n_cycles": 3,
+  "cycle_contract": [
+    {
+      "cycle": 1,
+      "train_step_min": 1,
+      "train_step_max": 445,
+      "calibration_step_min": 446,
+      "calibration_step_max": 519,
+      "policy_step_min": 520,
+      "policy_step_max": 594,
+      "test_step_min": 595,
+      "test_step_max": 644,
+      "train_n_steps": 445,
+      "calibration_n_steps": 74,
+      "policy_n_steps": 75,
+      "test_n_steps": 50
+    },
+    {
+      "cycle": 2,
+      "train_step_min": 1,
+      "train_step_max": 495,
+      "calibration_step_min": 496,
+      "calibration_step_max": 569,
+      "policy_step_min": 570,
+      "policy_step_max": 644,
+      "test_step_min": 645,
+      "test_step_max": 694,
+      "train_n_steps": 495,
+      "calibration_n_steps": 74,
+      "policy_n_steps": 75,
+      "test_n_steps": 50
+    },
+    {
+      "cycle": 3,
+      "train_step_min": 1,
+      "train_step_max": 545,
+      "calibration_step_min": 546,
+      "calibration_step_max": 619,
+      "policy_step_min": 620,
+      "policy_step_max": 694,
+      "test_step_min": 695,
+      "test_step_max": 743,
+      "train_n_steps": 545,
+      "calibration_n_steps": 74,
+      "policy_n_steps": 75,
+      "test_n_steps": 49
+    }
+  ],
+  "model": "transaction_plus_relational",
+  "reference_capacity_alerts_per_10k": 50,
+  "alpha_grid": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "balanced_50_per_10k_comparison": [
+    {
+      "cycle": 1,
+      "profile": "balanced",
+      "static_alpha": 0.25,
+      "rolling_alpha": 0.25,
+      "static_precision": 0.6132075471698113,
+      "rolling_precision": 0.6132075471698113,
+      "delta_precision": 0.0,
+      "static_fraud_recall": 0.23550724637681159,
+      "rolling_fraud_recall": 0.23550724637681159,
+      "delta_fraud_recall": 0.0,
+      "static_fraud_value_recall": 0.7545365406918171,
+      "rolling_fraud_value_recall": 0.7545365406918171,
+      "delta_fraud_value_recall": 0.0
+    },
+    {
+      "cycle": 2,
+      "profile": "balanced",
+      "static_alpha": 0.25,
+      "rolling_alpha": 0.25,
+      "static_precision": 0.42042042042042044,
+      "rolling_precision": 0.42042042042042044,
+      "delta_precision": 0.0,
+      "static_fraud_recall": 0.2564102564102564,
+      "rolling_fraud_recall": 0.2564102564102564,
+      "delta_fraud_recall": 0.0,
+      "static_fraud_value_recall": 0.8173679023122683,
+      "rolling_fraud_value_recall": 0.8154213586653648,
+      "delta_fraud_value_recall": -0.001946543646903498
+    },
+    {
+      "cycle": 3,
+      "profile": "balanced",
+      "static_alpha": 0.25,
+      "rolling_alpha": 0.25,
+      "static_precision": 1.0,
+      "rolling_precision": 1.0,
+      "delta_precision": 0.0,
+      "static_fraud_recall": 0.12769784172661872,
+      "rolling_fraud_recall": 0.12769784172661872,
+      "delta_fraud_recall": 0.0,
+      "static_fraud_value_recall": 0.40757533170724475,
+      "rolling_fraud_value_recall": 0.40757533170724475,
+      "delta_fraud_value_recall": 0.0
+    }
+  ],
+  "runtime_seconds": 167.6866798400879,
+  "interpretation_boundaries": [
+    "Cycle 1 exactly preserves the v1.7 temporal stages: train 1-445, calibration 446-519, policy selection 520-594, then test from step 595.",
+    "Later cycles move the origin forward and may use labels from earlier completed test windows, but never labels from their own or later test windows.",
+    "The frozen_v1_7 comparator never retrains, recalibrates or reselects routing alpha after cycle 1.",
+    "The rolling_refresh strategy refits the model on expanding history, refits calibration on the declared calibration window and reselects alpha only on the immediately preceding policy window.",
+    "PaySim does not contain real fraud-label maturity or investigation delay. This rolling refresh is therefore an as-of upper-bound under labels being available by the next refresh, not delayed-label production evidence.",
+    "The controlled 120k stress-test layer remains the evidence source for explicit delayed-label and verification-bias behaviour.",
+    "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact, prevented loss or staffing estimates."
+  ]
+}
