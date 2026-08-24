@@ -3,10 +3,11 @@ name: Full PaySim rolling refresh
 on:
   workflow_dispatch:
   push:
-    branches: [main, v1.8-rolling-refresh]
+    branches: [main, v1.9-policy-promotion-gate]
     paths:
       - '.github/workflows/paysim-rolling-refresh.yml'
       - 'scripts/run_paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_policy_promotion.py'
       - 'src/fraud_decisioning/paysim_rolling_refresh.py'
       - 'src/fraud_decisioning/paysim_stage_separation.py'
       - 'src/fraud_decisioning/paysim_routing_robustness.py'
@@ -19,6 +20,7 @@ on:
     paths:
       - '.github/workflows/paysim-rolling-refresh.yml'
       - 'scripts/run_paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_policy_promotion.py'
       - 'src/fraud_decisioning/paysim_rolling_refresh.py'
       - 'src/fraud_decisioning/paysim_stage_separation.py'
       - 'src/fraud_decisioning/paysim_routing_robustness.py'
@@ -56,7 +58,7 @@ jobs:
           mkdir -p data/raw/paysim
           curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/0.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/0.parquet'
           curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/1.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet'
-      - name: Run rolling refresh audit
+      - name: Run rolling refresh and promotion audit
         run: |
           python scripts/run_paysim_rolling_refresh.py --parquet-glob 'data/raw/paysim/*.parquet' --out results/paysim_rolling_refresh
       - name: Show rolling refresh results
@@ -66,6 +68,7 @@ jobs:
           cat results/paysim_rolling_refresh/probability_diagnostics_by_cycle.csv
           cat results/paysim_rolling_refresh/selected_profiles_by_cycle.csv
           cat results/paysim_rolling_refresh/routing_comparison_50_per_10k.csv
+          cat results/paysim_rolling_refresh/policy_promotion_gate.csv
       - uses: actions/upload-artifact@v4
         with:
           name: paysim-rolling-refresh-results
