@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/paysim-causal-promotion.yml'
       - 'scripts/run_paysim_causal_promotion.py'
+      - 'scripts/compare_causal_promotion_sensitivity.py'
       - 'src/fraud_decisioning/paysim_causal_promotion.py'
       - 'src/fraud_decisioning/paysim_online_capacity.py'
       - 'src/fraud_decisioning/paysim_policy_promotion.py'
@@ -18,11 +19,13 @@ on:
       - 'src/fraud_decisioning/paysim_full.py'
       - 'src/fraud_decisioning/modeling.py'
       - 'results/paysim_rolling_refresh/policy_promotion_gate.csv'
+      - 'results/paysim_promotion_sensitivity/sensitivity_summary.csv'
   pull_request:
     branches: [main]
     paths:
       - '.github/workflows/paysim-causal-promotion.yml'
       - 'scripts/run_paysim_causal_promotion.py'
+      - 'scripts/compare_causal_promotion_sensitivity.py'
       - 'src/fraud_decisioning/paysim_causal_promotion.py'
       - 'src/fraud_decisioning/paysim_online_capacity.py'
       - 'src/fraud_decisioning/paysim_policy_promotion.py'
@@ -34,6 +37,7 @@ on:
       - 'src/fraud_decisioning/paysim_full.py'
       - 'src/fraud_decisioning/modeling.py'
       - 'results/paysim_rolling_refresh/policy_promotion_gate.csv'
+      - 'results/paysim_promotion_sensitivity/sensitivity_summary.csv'
 
 permissions:
   contents: write
@@ -70,12 +74,20 @@ jobs:
             --parquet-glob 'data/raw/paysim/*.parquet' \
             --retrospective-reference results/paysim_rolling_refresh/policy_promotion_gate.csv \
             --out results/paysim_causal_promotion
+      - name: Compare retrospective and causal sensitivity
+        run: |
+          python scripts/compare_causal_promotion_sensitivity.py \
+            --causal results/paysim_causal_promotion/causal_sensitivity_summary.csv \
+            --retrospective results/paysim_promotion_sensitivity/sensitivity_summary.csv \
+            --summary results/paysim_causal_promotion/summary.json \
+            --out results/paysim_causal_promotion/retrospective_vs_causal_sensitivity.csv
       - name: Show causal promotion results
         run: |
           cat results/paysim_causal_promotion/summary.json
           cat results/paysim_causal_promotion/causal_promotion_gate.csv
           cat results/paysim_causal_promotion/causal_sensitivity_summary.csv
           cat results/paysim_causal_promotion/retrospective_vs_causal_promotion.csv
+          cat results/paysim_causal_promotion/retrospective_vs_causal_sensitivity.csv
       - uses: actions/upload-artifact@v4
         with:
           name: paysim-causal-promotion-results
