@@ -1,0 +1,41 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "profile": "balanced",
+  "reference_capacity_alerts_per_10k": 50,
+  "continuous_future_step_min": 595,
+  "continuous_future_step_max": 743,
+  "continuous_future_n": 123580,
+  "continuous_final_review_entitlement": 617,
+  "refresh_steps": [
+    645,
+    695
+  ],
+  "ttl_grid": [
+    "0",
+    "5",
+    "10",
+    "20",
+    "40",
+    "infinite"
+  ],
+  "detection_noninferiority_margin": 0.02,
+  "workload_reduction_target": 0.5,
+  "v1_13_infinite_reference_reproduced": true,
+  "operational_candidate_ttls": [],
+  "runtime_seconds": 173.1633141040802,
+  "interpretation_boundaries": [
+    "TTL is applied only to seen-but-unreviewed cases; fraud labels do not drive expiry or queue selection.",
+    "A case is eligible at step t when t-arrival_step is no greater than the declared TTL. Expiry occurs before refresh-time rescoring, so finite TTL can reduce release workload.",
+    "All TTLs use the same balanced rolling systems, rescore-on-refresh handoff rule, continuous 50 reviews/10k entitlement and deterministic non-label tie-break.",
+    "The predeclared detection guardrail is no worse than 2 percentage points versus infinite TTL separately for precision, fraud recall and fraud-value recall. The workload target is at least 50% fewer refresh-time rescores.",
+    "The operational_candidate field is a deterministic frontier screen, not a statistical promotion decision and not a production recommendation.",
+    "The infinite TTL must reproduce the v1.13 rescore_pending result when the main-branch reference file is available.",
+    "PaySim is synthetic; dataset steps are not production SLA units, transaction amount is not prevented loss, and the upstream rolling lifecycle still assumes prior-period labels are available at refresh."
+  ]
+}
