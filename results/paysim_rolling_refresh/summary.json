@@ -119,12 +119,90 @@
       "delta_fraud_value_recall": 0.0
     }
   ],
-  "runtime_seconds": 167.6866798400879,
+  "promotion_gate": {
+    "family_tests": 6,
+    "family_alpha": 0.05,
+    "bonferroni_one_sided_tail_alpha": 0.008333333333333333,
+    "block_steps": 5,
+    "n_bootstrap": 2000,
+    "min_primary_gain": 0.02,
+    "precision_noninferiority_margin": 0.02,
+    "recall_noninferiority_margin": 0.02,
+    "value_recall_noninferiority_margin": 0.02,
+    "decisions": [
+      {
+        "cycle": 2,
+        "profile": "case_first",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 0.25,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "fraud_recall",
+        "primary_point_delta": 0.0,
+        "primary_lower_bound": -0.00579150579150578
+      },
+      {
+        "cycle": 2,
+        "profile": "balanced",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 0.25,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "balanced_hmean",
+        "primary_point_delta": -0.00022239437524973482,
+        "primary_lower_bound": -0.008122233881917879
+      },
+      {
+        "cycle": 2,
+        "profile": "value_first",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 0.5,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "fraud_value_recall",
+        "primary_point_delta": -0.0021297454070181576,
+        "primary_lower_bound": -0.00543767594424475
+      },
+      {
+        "cycle": 3,
+        "profile": "case_first",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 0.25,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "fraud_recall",
+        "primary_point_delta": 0.0,
+        "primary_lower_bound": 0.0
+      },
+      {
+        "cycle": 3,
+        "profile": "balanced",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 0.25,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "balanced_hmean",
+        "primary_point_delta": 0.0,
+        "primary_lower_bound": 0.0
+      },
+      {
+        "cycle": 3,
+        "profile": "value_first",
+        "incumbent_alpha": 0.25,
+        "candidate_alpha": 1.0,
+        "decision": "KEEP_INCUMBENT",
+        "primary_metric": "fraud_value_recall",
+        "primary_point_delta": 0.20195801896906945,
+        "primary_lower_bound": 0.09782409437786647
+      }
+    ]
+  },
+  "runtime_seconds": 166.89084577560425,
   "interpretation_boundaries": [
     "Cycle 1 exactly preserves the v1.7 temporal stages: train 1-445, calibration 446-519, policy selection 520-594, then test from step 595.",
     "Later cycles move the origin forward and may use labels from earlier completed test windows, but never labels from their own or later test windows.",
     "The frozen_v1_7 comparator never retrains, recalibrates or reselects routing alpha after cycle 1.",
     "The rolling_refresh strategy refits the model on expanding history, refits calibration on the declared calibration window and reselects alpha only on the immediately preceding policy window.",
+    "v1.9 treats each refreshed cycle/profile score as a candidate policy even when alpha is unchanged; the model, calibrator, amount scale or queue ordering may still differ.",
+    "Promotion evidence uses a paired circular 5-step block bootstrap on a completed test window with Bonferroni one-sided family control across the six cycle-2/3 profile comparisons.",
+    "A candidate is not promoted unless its pre-declared primary metric gains at least 2 percentage points, its family-adjusted lower bound is positive, and non-primary guardrails are non-inferior within declared margins.",
+    "A promotion decision is retrospective after that test window has mature labels; it cannot alter or claim performance on the same test window.",
+    "The block bootstrap measures uncertainty in incremental captured outcomes for frozen queues; it does not include model-fit uncertainty or guarantee future production performance.",
     "PaySim does not contain real fraud-label maturity or investigation delay. This rolling refresh is therefore an as-of upper-bound under labels being available by the next refresh, not delayed-label production evidence.",
     "The controlled 120k stress-test layer remains the evidence source for explicit delayed-label and verification-bias behaviour.",
     "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact, prevented loss or staffing estimates."
