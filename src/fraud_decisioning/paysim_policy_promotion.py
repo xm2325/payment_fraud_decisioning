@@ -95,29 +95,26 @@ def _step_aggregates(
     amount: np.ndarray,
     incumbent_selected: np.ndarray,
     candidate_selected: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     unique_steps = np.unique(step)
-    rows = np.zeros((len(unique_steps), 7), dtype=float)
+    rows = np.zeros((len(unique_steps), 8), dtype=float)
+    fraud_mask = y == 1
     for i, value in enumerate(unique_steps):
         mask = step == value
-        fraud = mask & (y == 1)
+        fraud = mask & fraud_mask
         inc = mask & incumbent_selected
         cand = mask & candidate_selected
         rows[i] = (
             float(fraud.sum()),
             float(amount[fraud].sum()),
             float(inc.sum()),
-            float((inc & (y == 1)).sum()),
-            float(amount[inc & (y == 1)].sum()),
+            float((inc & fraud_mask).sum()),
+            float(amount[inc & fraud_mask].sum()),
             float(cand.sum()),
-            float((cand & (y == 1)).sum()),
+            float((cand & fraud_mask).sum()),
+            float(amount[cand & fraud_mask].sum()),
         )
-    candidate_value = np.array(
-        [float(amount[(step == value) & candidate_selected & (y == 1)].sum()) for value in unique_steps],
-        dtype=float,
-    )
-    rows = np.column_stack([rows, candidate_value])
-    return unique_steps, rows
+    return rows
 
 
 def _metrics_from_aggregate(total: np.ndarray) -> tuple[dict[str, float], dict[str, float]] | None:
@@ -185,7 +182,7 @@ def paired_circular_block_bootstrap(
         for metric in ("precision", "fraud_recall", "fraud_value_recall", "balanced_hmean")
     }
 
-    _, per_step = _step_aggregates(step_arr, y_arr, amount_arr, inc_selected, cand_selected)
+    per_step = _step_aggregates(step_arr, y_arr, amount_arr, inc_selected, cand_selected)
     n_steps = len(per_step)
     n_blocks = int(np.ceil(n_steps / block_steps))
     offsets = np.arange(block_steps, dtype=int)
@@ -235,6 +232,7 @@ def promotion_decision(
     candidate_alpha: float,
     uncertainty: dict | None,
     *,
+    policy_changed: bool = True,
     min_primary_gain: float = 0.02,
     precision_noninferiority_margin: float = 0.02,
     recall_noninferiority_margin: float = 0.02,
@@ -243,14 +241,14 @@ def promotion_decision(
     """Apply a pre-declared promotion rule to family-adjusted lower bounds."""
     if profile not in PROFILE_PRIMARY_METRIC:
         raise ValueError(f"Unknown profile: {profile}")
-    if float(candidate_alpha) == float(incumbent_alpha):
+    if not policy_changed:
         return {
             "decision": "NO_POLICY_CHANGE",
             "primary_metric": PROFILE_PRIMARY_METRIC[profile],
-            "reason": "candidate alpha equals incumbent alpha",
+            "reason": "candidate and incumbent policy scores are identical by construction",
         }
     if uncertainty is None:
-        raise ValueError("uncertainty is required when candidate and incumbent differ")
+        raise ValueError("uncertainty is required for a changed candidate policy")
 
     primary = PROFILE_PRIMARY_METRIC[profile]
     intervals = uncertainty["delta_intervals"]
@@ -282,6 +280,8 @@ def promotion_decision(
         "primary_point_delta": primary_point,
         "primary_lower_bound": primary_lower,
         "minimum_primary_gain": float(min_primary_gain),
+        "incumbent_alpha": float(incumbent_alpha),
+        "candidate_alpha": float(candidate_alpha),
         "guardrails": guards,
         "reason": reason,
     }
