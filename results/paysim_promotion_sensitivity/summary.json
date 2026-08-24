@@ -1,0 +1,110 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "block_steps": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "bootstrap_replicates_per_comparison": 2000,
+  "family_tests_per_block_length": 6,
+  "family_alpha": 0.05,
+  "bonferroni_one_sided_tail_alpha": 0.008333333333333333,
+  "frozen_v1_9_block_steps": 5,
+  "v1_9_reference_reproduced": true,
+  "cycle_3_value_first": {
+    "cycle": 3,
+    "profile": "value_first",
+    "sensitivity_class": "DEPENDENCE_SENSITIVE",
+    "block_steps": "1,3,5,10",
+    "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,PROMOTE",
+    "min_primary_lower_bound": 0.05927253887356382,
+    "max_primary_lower_bound": 0.12389169089341322,
+    "min_fraud_recall_lcb": -0.03741922555185596,
+    "max_fraud_recall_lcb": -0.01835183397683397
+  },
+  "all_sensitivity_classes": [
+    {
+      "cycle": 2,
+      "profile": "balanced",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.008958862207185518,
+      "max_primary_lower_bound": -0.007471273343512317,
+      "min_fraud_recall_lcb": -0.0067724612367469255,
+      "max_fraud_recall_lcb": -0.005535055350553542
+    },
+    {
+      "cycle": 2,
+      "profile": "case_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.006896551724137945,
+      "max_primary_lower_bound": -0.005409042331352332,
+      "min_fraud_recall_lcb": -0.006896551724137945,
+      "max_fraud_recall_lcb": -0.005409042331352332
+    },
+    {
+      "cycle": 2,
+      "profile": "value_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.0069571696268439336,
+      "max_primary_lower_bound": -0.004509245874479576,
+      "min_fraud_recall_lcb": -0.011166634300615869,
+      "max_fraud_recall_lcb": -0.008174696107951362
+    },
+    {
+      "cycle": 3,
+      "profile": "balanced",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": 0.0,
+      "max_primary_lower_bound": 0.0,
+      "min_fraud_recall_lcb": 0.0,
+      "max_fraud_recall_lcb": 0.0
+    },
+    {
+      "cycle": 3,
+      "profile": "case_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": 0.0,
+      "max_primary_lower_bound": 0.0,
+      "min_fraud_recall_lcb": 0.0,
+      "max_fraud_recall_lcb": 0.0
+    },
+    {
+      "cycle": 3,
+      "profile": "value_first",
+      "sensitivity_class": "DEPENDENCE_SENSITIVE",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,PROMOTE",
+      "min_primary_lower_bound": 0.05927253887356382,
+      "max_primary_lower_bound": 0.12389169089341322,
+      "min_fraud_recall_lcb": -0.03741922555185596,
+      "max_fraud_recall_lcb": -0.01835183397683397
+    }
+  ],
+  "runtime_seconds": 171.35821175575256,
+  "interpretation_boundaries": [
+    "v1.10 does not change the frozen v1.9 5-step promotion rule or its KEEP_INCUMBENT decision.",
+    "Block lengths 1, 3, 5 and 10 are a pre-declared dependence sensitivity set, not alternative settings chosen after seeing which one promotes a candidate.",
+    "Each block length reruns the same six cycle-2/3 profile comparisons with the same family-wise alpha and promotion guardrails.",
+    "ROBUST_KEEP_INCUMBENT means every declared block length rejects promotion; DEPENDENCE_SENSITIVE means the decision changes with the dependence assumption.",
+    "The 5-step rows must exactly reproduce the committed v1.9 policy-promotion result before the sensitivity audit is accepted.",
+    "These intervals quantify temporal uncertainty in realised frozen-queue outcomes; they do not include retraining uncertainty or guarantee future production performance.",
+    "PaySim is synthetic and lacks real investigation-completion and label-maturity timestamps."
+  ]
+}
