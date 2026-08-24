@@ -64,7 +64,7 @@ def test_paired_block_bootstrap_detects_stable_value_gain_without_case_tradeoff(
     assert decision["decision"] == "PROMOTE"
 
 
-def test_promotion_gate_rejects_negative_primary_result_and_skips_same_policy():
+def test_promotion_gate_rejects_negative_primary_result_and_explicitly_skips_identical_policy():
     args = _paired_fixture()
     step, y, amount, key, incumbent_score, candidate_score = args
     result = paired_circular_block_bootstrap(
@@ -93,5 +93,26 @@ def test_promotion_gate_rejects_negative_primary_result_and_skips_same_policy():
         incumbent_alpha=0.25,
         candidate_alpha=0.25,
         uncertainty=None,
+        policy_changed=False,
     )
     assert unchanged["decision"] == "NO_POLICY_CHANGE"
+
+
+def test_same_alpha_can_still_be_a_changed_refreshed_policy():
+    args = _paired_fixture()
+    result = paired_circular_block_bootstrap(
+        *args,
+        alerts_per_10k=500,
+        block_steps=2,
+        n_bootstrap=500,
+        tail_alpha=0.025,
+        seed=13,
+    )
+    decision = promotion_decision(
+        "value_first",
+        incumbent_alpha=0.25,
+        candidate_alpha=0.25,
+        uncertainty=result,
+        policy_changed=True,
+    )
+    assert decision["decision"] == "PROMOTE"
