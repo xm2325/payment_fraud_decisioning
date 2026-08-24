@@ -23,7 +23,10 @@ from fraud_decisioning.paysim_full import (
     materialise_features,
     validate_canonical,
 )
-from fraud_decisioning.paysim_online_capacity import batch_vs_online_capacity
+from fraud_decisioning.paysim_online_capacity import (
+    batch_vs_backlog_capacity,
+    batch_vs_online_capacity,
+)
 from fraud_decisioning.paysim_routing_profiles import DEFAULT_ALPHA_GRID, priority_score
 from fraud_decisioning.paysim_routing_robustness import (
     robustness_summary,
@@ -38,6 +41,10 @@ from fraud_decisioning.paysim_stage_separation import (
 
 BUDGETS = (10, 25, 50, 100)
 REFERENCE_CAPACITY = 50
+CAUSAL_COMPARATORS = (
+    ("current_step_only", batch_vs_online_capacity),
+    ("seen_so_far_backlog", batch_vs_backlog_capacity),
+)
 
 
 def _json_safe(value):
@@ -50,6 +57,40 @@ def _json_safe(value):
     if isinstance(value, float) and not math.isfinite(value):
         return None
     return value
+
+
+def _reference_metrics(row) -> dict:
+    keys = (
+        "batch_precision",
+        "online_precision",
+        "delta_precision",
+        "batch_fraud_recall",
+        "online_fraud_recall",
+        "delta_fraud_recall",
+        "batch_fraud_value_recall",
+        "online_fraud_value_recall",
+        "delta_fraud_value_recall",
+        "queue_overlap_rate",
+        "queue_jaccard",
+        "replacement_rate",
+        "review_delay_mean_steps",
+        "review_delay_p90_steps",
+        "review_delay_max_steps",
+        "fraud_review_delay_mean_steps",
+        "fraud_review_delay_p90_steps",
+    )
+    output = {
+        "alerts": int(row.online_alerts),
+        "incremental_fraud_cases_from_online_swaps": int(
+            row.incremental_fraud_cases_from_online_swaps
+        ),
+        "incremental_fraud_value_from_online_swaps": float(
+            row.incremental_fraud_value_from_online_swaps
+        ),
+    }
+    for key in keys:
+        output[key] = float(getattr(row, key))
+    return output
 
 
 def main() -> None:
@@ -117,31 +158,35 @@ def main() -> None:
         score = priority_score(future_probability, future.amount, alpha, amount_scale)
 
         for budget in BUDGETS:
-            row, schedule = batch_vs_online_capacity(
-                future.step,
-                future.is_fraud,
-                score,
-                future.amount,
-                future.event_key,
-                alerts_per_10k=float(budget),
-            )
-            row.update(
-                {
-                    "profile": profile,
-                    "alpha": alpha,
-                    "amount_scale": amount_scale,
-                    "future_step_min": int(future.step.min()),
-                    "future_step_max": int(future.step.max()),
-                }
-            )
-            comparison_rows.append(row)
+            for declared_contract, comparator in CAUSAL_COMPARATORS:
+                row, schedule = comparator(
+                    future.step,
+                    future.is_fraud,
+                    score,
+                    future.amount,
+                    future.event_key,
+                    alerts_per_10k=float(budget),
+                )
+                if row["routing_contract"] != declared_contract:
+                    raise AssertionError("Comparator routing contract changed unexpectedly")
+                row.update(
+                    {
+                        "profile": profile,
+                        "alpha": alpha,
+                        "amount_scale": amount_scale,
+                        "future_step_min": int(future.step.min()),
+                        "future_step_max": int(future.step.max()),
+                    }
+                )
+                comparison_rows.append(row)
 
-            if budget == REFERENCE_CAPACITY:
-                schedule = schedule.copy()
-                schedule.insert(0, "profile", profile)
-                schedule.insert(1, "alpha", alpha)
-                schedule.insert(2, "target_alerts_per_10k", float(budget))
-                schedule_frames.append(schedule)
+                if budget == REFERENCE_CAPACITY:
+                    schedule = schedule.copy()
+                    schedule.insert(0, "profile", profile)
+                    schedule.insert(1, "alpha", alpha)
+                    schedule.insert(2, "routing_contract", declared_contract)
+                    schedule.insert(3, "target_alerts_per_10k", float(budget))
+                    schedule_frames.append(schedule)
 
     comparison = pd.DataFrame(comparison_rows)
     comparison.to_csv(out_dir / "batch_vs_online_frontier.csv", index=False)
@@ -151,39 +196,24 @@ def main() -> None:
     reference = comparison.loc[
         comparison.target_alerts_per_10k == REFERENCE_CAPACITY
     ].copy()
-    reference_rows = {
-        str(row.profile): {
-            "alpha": float(row.alpha),
-            "alerts": int(row.online_alerts),
-            "batch_precision": float(row.batch_precision),
-            "online_precision": float(row.online_precision),
-            "delta_precision": float(row.delta_precision),
-            "batch_fraud_recall": float(row.batch_fraud_recall),
-            "online_fraud_recall": float(row.online_fraud_recall),
-            "delta_fraud_recall": float(row.delta_fraud_recall),
-            "batch_fraud_value_recall": float(row.batch_fraud_value_recall),
-            "online_fraud_value_recall": float(row.online_fraud_value_recall),
-            "delta_fraud_value_recall": float(row.delta_fraud_value_recall),
-            "queue_overlap_rate": float(row.queue_overlap_rate),
-            "replacement_rate": float(row.replacement_rate),
-            "incremental_fraud_cases_from_online_swaps": int(
-                row.incremental_fraud_cases_from_online_swaps
-            ),
-            "incremental_fraud_value_from_online_swaps": float(
-                row.incremental_fraud_value_from_online_swaps
-            ),
+    reference_rows: dict[str, dict] = {}
+    for profile in sorted(reference.profile.unique()):
+        profile_rows = reference.loc[reference.profile == profile]
+        profile_result: dict[str, dict] = {
+            "alpha": float(profile_rows.iloc[0].alpha),
         }
-        for _, row in reference.iterrows()
-    }
+        for contract in sorted(profile_rows.routing_contract.unique()):
+            row = profile_rows.loc[profile_rows.routing_contract == contract].iloc[0]
+            profile_result[str(contract)] = _reference_metrics(row)
+        reference_rows[str(profile)] = profile_result
 
-    final_schedule = schedules.loc[
-        schedules.target_alerts_per_10k == REFERENCE_CAPACITY
-    ].groupby("profile", as_index=False).tail(1)
+    final_schedule = schedules.groupby(
+        ["profile", "routing_contract"], as_index=False
+    ).tail(1)
+    expected_final = int(np.floor(REFERENCE_CAPACITY * len(future) / 10_000))
     for _, row in final_schedule.iterrows():
-        if int(row.selected_cumulative) != int(
-            np.floor(REFERENCE_CAPACITY * len(future) / 10_000)
-        ):
-            raise AssertionError("Every reference online profile must consume identical final capacity")
+        if int(row.selected_cumulative) != expected_final:
+            raise AssertionError("Every causal reference must consume identical final capacity")
 
     summary = {
         "audit": audit,
@@ -197,16 +227,19 @@ def main() -> None:
         "model": "transaction_plus_relational_fixed_before_online_capacity_audit",
         "policy_selection": "v1.7 disjoint calibration/policy stages with robust alpha selection",
         "budgets_per_10k": list(BUDGETS),
+        "causal_routing_contracts": [name for name, _ in CAUSAL_COMPARATORS],
         "reference_capacity_alerts_per_10k": REFERENCE_CAPACITY,
         "reference_50_per_10k": reference_rows,
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
             "The existing whole-window exact-capacity metric is retained as a retrospective batch benchmark, not an online routing claim.",
-            "The online rule processes PaySim steps in ascending order and never compares a current-step score with a later-step score.",
-            "Capacity entitlement accrues as floor(alerts_per_10k * cumulative_transactions / 10000), so fractional capacity carries forward and final total capacity exactly matches the batch benchmark.",
+            "Both causal rules process PaySim steps in ascending order and never compare an observed transaction with a later-step score.",
+            "The current_step_only rule immediately spends newly earned capacity within the current step; it is a strict low-latency micro-batch lower comparator rather than the only plausible operations design.",
+            "The seen_so_far_backlog rule lets earlier unreviewed transactions remain eligible for later capacity, so it can defer reviews while still using only information available by each decision step.",
+            "Capacity entitlement accrues as floor(alerts_per_10k * cumulative_transactions / 10000); fractional capacity carries forward and all comparators use exactly the same final number of reviews.",
             "Within one PaySim step, transactions are treated as one micro-batch because this benchmark does not define a finer causal ordering contract for the audit.",
             "Model training, probability calibration and alpha selection remain frozen before future steps 595-743; future labels do not choose the policy.",
-            "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact, prevented loss or staffing estimates."
+            "PaySim is synthetic mobile-money data; synthetic transaction amount is not interpreted as prevented loss or production financial impact."
         ],
     }
     with open(out_dir / "summary.json", "w") as f:
