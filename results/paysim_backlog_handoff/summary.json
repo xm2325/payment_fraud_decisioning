@@ -1,0 +1,93 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "profile": "balanced",
+  "reference_capacity_alerts_per_10k": 50,
+  "continuous_future_step_min": 595,
+  "continuous_future_step_max": 743,
+  "continuous_future_n": 123580,
+  "continuous_final_review_entitlement": 617,
+  "refresh_steps": [
+    645,
+    695
+  ],
+  "selected_balanced_profile_by_regime": {
+    "1": {
+      "alpha": 0.25,
+      "amount_scale": 70669.965
+    },
+    "2": {
+      "alpha": 0.25,
+      "amount_scale": 66303.38
+    },
+    "3": {
+      "alpha": 0.25,
+      "amount_scale": 75793.935
+    }
+  },
+  "strategy_metrics": {
+    "frozen_incumbent": {
+      "alerts": 617,
+      "precision": 0.5089141004862237,
+      "fraud_recall": 0.18984280532043532,
+      "fraud_value_recall": 0.6409676471858126,
+      "balanced_hmean": 0.29292625265924566,
+      "review_delay_mean_steps": 7.716369529983792,
+      "review_delay_p90_steps": 28.0,
+      "review_delay_max_steps": 92,
+      "fraud_review_delay_mean_steps": 8.496815286624203,
+      "fraud_review_delay_p90_steps": 18.399999999999977
+    },
+    "retain_old_scores": {
+      "alerts": 617,
+      "precision": 0.5316045380875203,
+      "fraud_recall": 0.19830713422007254,
+      "fraud_value_recall": 0.6010489702034131,
+      "balanced_hmean": 0.2982207758153768,
+      "review_delay_mean_steps": 12.909238249594814,
+      "review_delay_p90_steps": 39.39999999999998,
+      "review_delay_max_steps": 87,
+      "fraud_review_delay_mean_steps": 13.460365853658537,
+      "fraud_review_delay_p90_steps": 42.60000000000002
+    },
+    "rescore_pending": {
+      "alerts": 617,
+      "precision": 0.526742301458671,
+      "fraud_recall": 0.19649334945586458,
+      "fraud_value_recall": 0.6339156544635364,
+      "balanced_hmean": 0.29999725347423256,
+      "review_delay_mean_steps": 8.346839546191248,
+      "review_delay_p90_steps": 28.0,
+      "review_delay_max_steps": 95,
+      "fraud_review_delay_mean_steps": 9.138461538461538,
+      "fraud_review_delay_p90_steps": 20.600000000000023
+    },
+    "drop_pending": {
+      "alerts": 617,
+      "precision": 0.4862236628849271,
+      "fraud_recall": 0.18137847642079807,
+      "fraud_value_recall": 0.620029309941072,
+      "balanced_hmean": 0.2806560492352639,
+      "review_delay_mean_steps": 5.7390599675850895,
+      "review_delay_p90_steps": 16.399999999999977,
+      "review_delay_max_steps": 41,
+      "fraud_review_delay_mean_steps": 4.71,
+      "fraud_review_delay_p90_steps": 13.0
+    }
+  },
+  "runtime_seconds": 167.284188747406,
+  "interpretation_boundaries": [
+    "All strategies use one continuous analyst-capacity entitlement across steps 595-743; capacity is not reset at model-refresh boundaries.",
+    "frozen_incumbent uses the cycle-1 model/calibrator/policy throughout; the three handoff strategies switch to the rolling cycle-2 and cycle-3 systems at steps 645 and 695.",
+    "retain_old_scores preserves pending-case scores across refresh, rescore_pending applies the newly released model/policy score to all pending cases, and drop_pending expires all unresolved cases at refresh.",
+    "No score from a later model regime is used before that regime's release step. New arrivals are scored only by the model active on arrival.",
+    "The rolling model lifecycle retains the v1.8 assumption that prior-period labels are available for the next refresh; PaySim does not contain real label-maturity or investigation-completion timestamps.",
+    "Pending analyst-review status is therefore an operations abstraction and is not evidence that the labels used upstream would be unavailable in the same way in production.",
+    "PaySim is synthetic; transaction amount is not prevented loss and PaySim steps are not production SLA units."
+  ]
+}

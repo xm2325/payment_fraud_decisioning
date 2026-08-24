@@ -1,0 +1,13 @@
+strategy,review_regime,reviews,fraud_reviews
+frozen_incumbent,1,617,314
+frozen_incumbent,2,0,0
+frozen_incumbent,3,0,0
+retain_old_scores,1,212,99
+retain_old_scores,2,333,183
+retain_old_scores,3,72,46
+rescore_pending,1,212,99
+rescore_pending,2,333,154
+rescore_pending,3,72,72
+drop_pending,1,212,99
+drop_pending,2,333,140
+drop_pending,3,72,61

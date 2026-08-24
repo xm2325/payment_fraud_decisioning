@@ -1,0 +1,7 @@
+strategy,refresh_step,from_regime,to_regime,handoff_mode,pending_before,rescored_pending,dropped_pending,pending_after_handoff,selected_before_refresh
+retain_old_scores,645,1,2,retain_old_scores,42204,0,0,42204,212
+retain_old_scores,695,2,3,retain_old_scores,108643,0,0,108643,545
+rescore_pending,645,1,2,rescore_pending,42204,42204,0,42204,212
+rescore_pending,695,2,3,rescore_pending,108643,108643,0,108643,545
+drop_pending,645,1,2,drop_pending,42204,0,42204,0,212
+drop_pending,695,2,3,drop_pending,66439,0,66439,0,545
