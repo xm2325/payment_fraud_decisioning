@@ -1,0 +1,95 @@
+name: Full PaySim rolling refresh
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, v1.8-rolling-refresh]
+    paths:
+      - '.github/workflows/paysim-rolling-refresh.yml'
+      - 'scripts/run_paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_stage_separation.py'
+      - 'src/fraud_decisioning/paysim_routing_robustness.py'
+      - 'src/fraud_decisioning/paysim_routing_profiles.py'
+      - 'src/fraud_decisioning/paysim_monitoring.py'
+      - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/modeling.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/paysim-rolling-refresh.yml'
+      - 'scripts/run_paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_rolling_refresh.py'
+      - 'src/fraud_decisioning/paysim_stage_separation.py'
+      - 'src/fraud_decisioning/paysim_routing_robustness.py'
+      - 'src/fraud_decisioning/paysim_routing_profiles.py'
+      - 'src/fraud_decisioning/paysim_monitoring.py'
+      - 'src/fraud_decisioning/paysim_full.py'
+      - 'src/fraud_decisioning/modeling.py'
+
+permissions:
+  contents: write
+
+jobs:
+  paysim-rolling-refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download canonical PaySim parquet shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/raw/paysim
+          curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/0.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/0.parquet'
+          curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/1.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet'
+      - name: Run rolling refresh audit
+        run: |
+          python scripts/run_paysim_rolling_refresh.py --parquet-glob 'data/raw/paysim/*.parquet' --out results/paysim_rolling_refresh
+      - name: Show rolling refresh results
+        run: |
+          cat results/paysim_rolling_refresh/summary.json
+          cat results/paysim_rolling_refresh/cycle_contract.csv
+          cat results/paysim_rolling_refresh/probability_diagnostics_by_cycle.csv
+          cat results/paysim_rolling_refresh/selected_profiles_by_cycle.csv
+          cat results/paysim_rolling_refresh/routing_comparison_50_per_10k.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paysim-rolling-refresh-results
+          path: results/paysim_rolling_refresh
+          if-no-files-found: error
+          retention-days: 30
+      - name: Commit aggregate rolling-refresh results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- results/paysim_rolling_refresh
+          if git diff --cached --quiet; then
+            echo 'No aggregate rolling-refresh result changes to commit.'
+            exit 0
+          fi
+          git commit -m 'data: add full PaySim rolling refresh results'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Publish attempt ${attempt} lost a race; retrying."
+            sleep $((attempt * 2))
+          done
+          exit 1
