@@ -1,0 +1,191 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "routing_contract": "seen_so_far_backlog",
+  "reference_capacity_alerts_per_10k": 50,
+  "block_steps": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "official_gate_block_steps": 5,
+  "official_gate_seed_rule": "v1.9 seed + 100*cycle + profile offset",
+  "sensitivity_seed_rule": "official seed plus 1000*block_steps for non-5-step runs",
+  "bootstrap_replicates_per_comparison": 2000,
+  "family_tests_per_block_length": 6,
+  "family_alpha": 0.05,
+  "bonferroni_one_sided_tail_alpha": 0.008333333333333333,
+  "minimum_primary_gain": 0.02,
+  "noninferiority_margins": {
+    "precision": 0.02,
+    "fraud_recall": 0.02,
+    "fraud_value_recall": 0.02
+  },
+  "causal_5_step_decisions": [
+    {
+      "cycle": 2,
+      "profile": "balanced",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "balanced_hmean",
+      "primary_point_delta": -0.00022239437524973482,
+      "primary_lower_bound": -0.008122233881917879
+    },
+    {
+      "cycle": 2,
+      "profile": "case_first",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "fraud_recall",
+      "primary_point_delta": 0.0,
+      "primary_lower_bound": -0.00579150579150578
+    },
+    {
+      "cycle": 2,
+      "profile": "value_first",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "fraud_value_recall",
+      "primary_point_delta": -0.0021297454070181576,
+      "primary_lower_bound": -0.00543767594424475
+    },
+    {
+      "cycle": 3,
+      "profile": "balanced",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "balanced_hmean",
+      "primary_point_delta": -0.004305280833759473,
+      "primary_lower_bound": -0.015930133004112595
+    },
+    {
+      "cycle": 3,
+      "profile": "case_first",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "fraud_recall",
+      "primary_point_delta": -0.0017985611510791394,
+      "primary_lower_bound": -0.009375322669970808
+    },
+    {
+      "cycle": 3,
+      "profile": "value_first",
+      "decision": "KEEP_INCUMBENT",
+      "primary_metric": "fraud_value_recall",
+      "primary_point_delta": 0.009541715917814109,
+      "primary_lower_bound": -0.008090730478370852
+    }
+  ],
+  "dependence_sensitivity": [
+    {
+      "cycle": 2,
+      "profile": "balanced",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.009330693015528226,
+      "max_primary_lower_bound": -0.00776113782980005,
+      "min_fraud_recall_lcb": -0.006968641114982586,
+      "max_fraud_recall_lcb": -0.005576208178438652
+    },
+    {
+      "cycle": 2,
+      "profile": "case_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.006072874493927127,
+      "max_primary_lower_bound": -0.005604965981623037,
+      "min_fraud_recall_lcb": -0.006072874493927127,
+      "max_fraud_recall_lcb": -0.005604965981623037
+    },
+    {
+      "cycle": 2,
+      "profile": "value_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.0068709209362734155,
+      "max_primary_lower_bound": -0.0045299283093687215,
+      "min_fraud_recall_lcb": -0.011098231800161873,
+      "max_fraud_recall_lcb": -0.008196721311475419
+    },
+    {
+      "cycle": 3,
+      "profile": "balanced",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.018943407821891838,
+      "max_primary_lower_bound": -0.014889456303895054,
+      "min_fraud_recall_lcb": -0.012112068965517251,
+      "max_fraud_recall_lcb": -0.009363295880149817
+    },
+    {
+      "cycle": 3,
+      "profile": "case_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.011208354295936054,
+      "max_primary_lower_bound": -0.009375322669970808,
+      "min_fraud_recall_lcb": -0.011208354295936054,
+      "max_fraud_recall_lcb": -0.009375322669970808
+    },
+    {
+      "cycle": 3,
+      "profile": "value_first",
+      "sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "block_steps": "1,3,5,10",
+      "decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "min_primary_lower_bound": -0.010391491590630617,
+      "max_primary_lower_bound": -0.006724351256195055,
+      "min_fraud_recall_lcb": -0.017857142857142853,
+      "max_fraud_recall_lcb": -0.015254237288135603
+    }
+  ],
+  "retrospective_decision_changes": [],
+  "runtime_seconds": 171.33110570907593,
+  "interpretation_boundaries": [
+    "v1.12 changes the evaluation queue contract, not the pre-declared +2 pp gain threshold, -2 pp guardrails, family-wise alpha or 5-step official block length.",
+    "The official 5-step bootstrap uses the same deterministic seed rule as v1.9 so the queue contract is the intended methodological change.",
+    "The incumbent and candidate queues use only transactions observed up to each PaySim step; later-step scores cannot affect earlier review decisions.",
+    "The paired block intervals resample realised per-step outcomes conditional on the observed frozen causal queues. They do not refit models or reconstruct alternative queues inside each bootstrap replicate.",
+    "The 1/3/5/10-step set is a dependence sensitivity audit; the official gate remains the pre-declared 5-step rule.",
+    "Completed policy-selection windows may use their full historical scores to choose alpha because those windows precede the test period; future test scores and labels never select alpha.",
+    "PaySim is synthetic and its step unit is not presented as a production SLA or investigation timestamp."
+  ],
+  "retrospective_vs_causal_sensitivity_changes": [
+    {
+      "cycle": 3,
+      "profile": "value_first",
+      "retrospective_sensitivity_class": "DEPENDENCE_SENSITIVE",
+      "retrospective_block_steps": "1,3,5,10",
+      "retrospective_decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,PROMOTE",
+      "retrospective_min_primary_lower_bound": 0.0592725388735638,
+      "retrospective_max_primary_lower_bound": 0.1238916908934132,
+      "retrospective_min_fraud_recall_lcb": -0.0374192255518559,
+      "retrospective_max_fraud_recall_lcb": -0.0183518339768339,
+      "causal_sensitivity_class": "ROBUST_KEEP_INCUMBENT",
+      "causal_block_steps": "1,3,5,10",
+      "causal_decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+      "causal_min_primary_lower_bound": -0.0103914915906306,
+      "causal_max_primary_lower_bound": -0.006724351256195,
+      "causal_min_fraud_recall_lcb": -0.0178571428571428,
+      "causal_max_fraud_recall_lcb": -0.0152542372881356,
+      "sensitivity_class_changed": true,
+      "decision_sequence_changed": true
+    }
+  ],
+  "cycle_3_value_first_sensitivity_change": {
+    "retrospective_class": "DEPENDENCE_SENSITIVE",
+    "retrospective_decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,PROMOTE",
+    "causal_class": "ROBUST_KEEP_INCUMBENT",
+    "causal_decisions": "KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT,KEEP_INCUMBENT",
+    "retrospective_min_primary_lower_bound": 0.0592725388735638,
+    "causal_min_primary_lower_bound": -0.0103914915906306,
+    "retrospective_max_primary_lower_bound": 0.1238916908934132,
+    "causal_max_primary_lower_bound": -0.006724351256195
+  }
+}
