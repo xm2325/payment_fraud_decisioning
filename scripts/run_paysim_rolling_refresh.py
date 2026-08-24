@@ -23,6 +23,11 @@ from fraud_decisioning.paysim_full import (
     materialise_features,
     validate_canonical,
 )
+from fraud_decisioning.paysim_policy_promotion import (
+    PromotionGateConfig,
+    paired_circular_block_bootstrap,
+    promotion_decision,
+)
 from fraud_decisioning.paysim_rolling_refresh import (
     build_rolling_cycles,
     cycle_contract_frame,
@@ -31,6 +36,7 @@ from fraud_decisioning.paysim_rolling_refresh import (
 from fraud_decisioning.paysim_routing_profiles import (
     DEFAULT_ALPHA_GRID,
     evaluate_selected_profiles,
+    priority_score,
 )
 from fraud_decisioning.paysim_routing_robustness import (
     robustness_summary,
@@ -46,6 +52,9 @@ from fraud_decisioning.paysim_stage_separation import (
 REFERENCE_CAPACITY = 50
 TEST_WINDOW_STEPS = 50
 POLICY_WINDOWS = 3
+PROMOTION_CONFIG = PromotionGateConfig()
+PROMOTION_FAMILY_TESTS = 6  # cycles 2-3 x three pre-declared routing profiles
+PROFILE_SEED_OFFSET = {"case_first": 1, "balanced": 2, "value_first": 3}
 
 
 def _json_safe(value):
@@ -153,6 +162,132 @@ def _comparison_rows(cycle_id: int, static_frontier: pd.DataFrame, rolling_front
     return rows
 
 
+def _selected_profile(bundle, profile: str):
+    rows = bundle["selected"].loc[bundle["selected"].profile == profile]
+    if len(rows) != 1:
+        raise ValueError(f"Expected one selected row for profile {profile}")
+    return rows.iloc[0]
+
+
+def _promotion_row(
+    cycle,
+    profile: str,
+    static_bundle,
+    rolling_bundle,
+    test,
+    static_probability,
+    rolling_probability,
+    tail_alpha: float,
+):
+    static_profile = _selected_profile(static_bundle, profile)
+    rolling_profile = _selected_profile(rolling_bundle, profile)
+
+    if cycle.cycle == 1:
+        decision = promotion_decision(
+            profile,
+            float(static_profile.alpha),
+            float(rolling_profile.alpha),
+            uncertainty=None,
+            policy_changed=False,
+        )
+        return {
+            "cycle": cycle.cycle,
+            "profile": profile,
+            "test_step_min": cycle.test_step_min,
+            "test_step_max": cycle.test_step_max,
+            "incumbent_alpha": float(static_profile.alpha),
+            "candidate_alpha": float(rolling_profile.alpha),
+            "decision": decision["decision"],
+            "primary_metric": decision["primary_metric"],
+            "primary_point_delta": math.nan,
+            "primary_lower_bound": math.nan,
+            "delta_precision": math.nan,
+            "lcb_precision": math.nan,
+            "ucb_precision": math.nan,
+            "delta_fraud_recall": math.nan,
+            "lcb_fraud_recall": math.nan,
+            "ucb_fraud_recall": math.nan,
+            "delta_fraud_value_recall": math.nan,
+            "lcb_fraud_value_recall": math.nan,
+            "ucb_fraud_value_recall": math.nan,
+            "delta_balanced_hmean": math.nan,
+            "lcb_balanced_hmean": math.nan,
+            "ucb_balanced_hmean": math.nan,
+            "precision_guardrail_pass": True,
+            "fraud_recall_guardrail_pass": True,
+            "fraud_value_recall_guardrail_pass": True,
+            "bootstrap_valid": 0,
+            "reason": decision["reason"],
+        }
+
+    static_score = priority_score(
+        static_probability,
+        test.amount,
+        float(static_profile.alpha),
+        float(static_profile.amount_scale),
+    )
+    rolling_score = priority_score(
+        rolling_probability,
+        test.amount,
+        float(rolling_profile.alpha),
+        float(rolling_profile.amount_scale),
+    )
+    uncertainty = paired_circular_block_bootstrap(
+        test.step,
+        test.is_fraud,
+        test.amount,
+        test.event_key,
+        static_score,
+        rolling_score,
+        alerts_per_10k=PROMOTION_CONFIG.alerts_per_10k,
+        block_steps=PROMOTION_CONFIG.block_steps,
+        n_bootstrap=PROMOTION_CONFIG.n_bootstrap,
+        tail_alpha=tail_alpha,
+        seed=PROMOTION_CONFIG.seed + 100 * cycle.cycle + PROFILE_SEED_OFFSET[profile],
+    )
+    decision = promotion_decision(
+        profile,
+        float(static_profile.alpha),
+        float(rolling_profile.alpha),
+        uncertainty,
+        min_primary_gain=PROMOTION_CONFIG.min_primary_gain,
+        precision_noninferiority_margin=PROMOTION_CONFIG.precision_noninferiority_margin,
+        recall_noninferiority_margin=PROMOTION_CONFIG.recall_noninferiority_margin,
+        value_recall_noninferiority_margin=PROMOTION_CONFIG.value_recall_noninferiority_margin,
+    )
+    intervals = uncertainty["delta_intervals"]
+    guards = decision["guardrails"]
+    return {
+        "cycle": cycle.cycle,
+        "profile": profile,
+        "test_step_min": cycle.test_step_min,
+        "test_step_max": cycle.test_step_max,
+        "incumbent_alpha": float(static_profile.alpha),
+        "candidate_alpha": float(rolling_profile.alpha),
+        "decision": decision["decision"],
+        "primary_metric": decision["primary_metric"],
+        "primary_point_delta": float(decision["primary_point_delta"]),
+        "primary_lower_bound": float(decision["primary_lower_bound"]),
+        "delta_precision": float(intervals["precision"]["point_delta"]),
+        "lcb_precision": float(intervals["precision"]["lower"]),
+        "ucb_precision": float(intervals["precision"]["upper"]),
+        "delta_fraud_recall": float(intervals["fraud_recall"]["point_delta"]),
+        "lcb_fraud_recall": float(intervals["fraud_recall"]["lower"]),
+        "ucb_fraud_recall": float(intervals["fraud_recall"]["upper"]),
+        "delta_fraud_value_recall": float(intervals["fraud_value_recall"]["point_delta"]),
+        "lcb_fraud_value_recall": float(intervals["fraud_value_recall"]["lower"]),
+        "ucb_fraud_value_recall": float(intervals["fraud_value_recall"]["upper"]),
+        "delta_balanced_hmean": float(intervals["balanced_hmean"]["point_delta"]),
+        "lcb_balanced_hmean": float(intervals["balanced_hmean"]["lower"]),
+        "ucb_balanced_hmean": float(intervals["balanced_hmean"]["upper"]),
+        "precision_guardrail_pass": bool(guards.get("precision", True)),
+        "fraud_recall_guardrail_pass": bool(guards.get("fraud_recall", True)),
+        "fraud_value_recall_guardrail_pass": bool(guards.get("fraud_value_recall", True)),
+        "bootstrap_valid": int(uncertainty["n_bootstrap_valid"]),
+        "reason": decision["reason"],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet-glob", required=True)
@@ -199,6 +334,9 @@ def main() -> None:
     contract.to_csv(out_dir / "cycle_contract.csv", index=False)
     del validation
 
+    if len(cycles) != 3:
+        raise ValueError("Canonical PaySim v1.9 promotion family expects exactly three rolling cycles")
+
     first = cycles[0]
     static_train = _load_split(con, work, _where(first.train_step_min, first.train_step_max))
     static_calibration = _load_split(
@@ -215,6 +353,8 @@ def main() -> None:
     selected_frames = []
     robustness_frames = []
     comparison_rows = []
+    promotion_rows = []
+    promotion_tail_alpha = PROMOTION_CONFIG.family_alpha / PROMOTION_FAMILY_TESTS
 
     for cycle in cycles:
         if cycle.cycle == 1:
@@ -298,6 +438,20 @@ def main() -> None:
         comparison_rows.extend(
             _comparison_rows(cycle.cycle, static_frontier, rolling_frontier)
         )
+
+        for profile in ("case_first", "balanced", "value_first"):
+            promotion_rows.append(
+                _promotion_row(
+                    cycle,
+                    profile,
+                    static_bundle,
+                    rolling_bundle,
+                    test,
+                    static_probability,
+                    rolling_probability,
+                    promotion_tail_alpha,
+                )
+            )
         del test
 
     frontiers = pd.concat(frontier_frames, ignore_index=True)
@@ -310,8 +464,11 @@ def main() -> None:
     robustness_frame.to_csv(out_dir / "policy_robustness_by_cycle.csv", index=False)
     comparison = pd.DataFrame(comparison_rows)
     comparison.to_csv(out_dir / "routing_comparison_50_per_10k.csv", index=False)
+    promotion = pd.DataFrame(promotion_rows)
+    promotion.to_csv(out_dir / "policy_promotion_gate.csv", index=False)
 
     balanced = comparison.loc[comparison.profile == "balanced"].copy()
+    tested_promotions = promotion.loc[promotion.cycle > 1]
     summary = {
         "audit": audit,
         "outer_split": {
@@ -329,12 +486,40 @@ def main() -> None:
         "reference_capacity_alerts_per_10k": REFERENCE_CAPACITY,
         "alpha_grid": list(DEFAULT_ALPHA_GRID),
         "balanced_50_per_10k_comparison": balanced.to_dict(orient="records"),
+        "promotion_gate": {
+            "family_tests": PROMOTION_FAMILY_TESTS,
+            "family_alpha": PROMOTION_CONFIG.family_alpha,
+            "bonferroni_one_sided_tail_alpha": promotion_tail_alpha,
+            "block_steps": PROMOTION_CONFIG.block_steps,
+            "n_bootstrap": PROMOTION_CONFIG.n_bootstrap,
+            "min_primary_gain": PROMOTION_CONFIG.min_primary_gain,
+            "precision_noninferiority_margin": PROMOTION_CONFIG.precision_noninferiority_margin,
+            "recall_noninferiority_margin": PROMOTION_CONFIG.recall_noninferiority_margin,
+            "value_recall_noninferiority_margin": PROMOTION_CONFIG.value_recall_noninferiority_margin,
+            "decisions": tested_promotions[
+                [
+                    "cycle",
+                    "profile",
+                    "incumbent_alpha",
+                    "candidate_alpha",
+                    "decision",
+                    "primary_metric",
+                    "primary_point_delta",
+                    "primary_lower_bound",
+                ]
+            ].to_dict(orient="records"),
+        },
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
             "Cycle 1 exactly preserves the v1.7 temporal stages: train 1-445, calibration 446-519, policy selection 520-594, then test from step 595.",
             "Later cycles move the origin forward and may use labels from earlier completed test windows, but never labels from their own or later test windows.",
             "The frozen_v1_7 comparator never retrains, recalibrates or reselects routing alpha after cycle 1.",
             "The rolling_refresh strategy refits the model on expanding history, refits calibration on the declared calibration window and reselects alpha only on the immediately preceding policy window.",
+            "v1.9 treats each refreshed cycle/profile score as a candidate policy even when alpha is unchanged; the model, calibrator, amount scale or queue ordering may still differ.",
+            "Promotion evidence uses a paired circular 5-step block bootstrap on a completed test window with Bonferroni one-sided family control across the six cycle-2/3 profile comparisons.",
+            "A candidate is not promoted unless its pre-declared primary metric gains at least 2 percentage points, its family-adjusted lower bound is positive, and non-primary guardrails are non-inferior within declared margins.",
+            "A promotion decision is retrospective after that test window has mature labels; it cannot alter or claim performance on the same test window.",
+            "The block bootstrap measures uncertainty in incremental captured outcomes for frozen queues; it does not include model-fit uncertainty or guarantee future production performance.",
             "PaySim does not contain real fraud-label maturity or investigation delay. This rolling refresh is therefore an as-of upper-bound under labels being available by the next refresh, not delayed-label production evidence.",
             "The controlled 120k stress-test layer remains the evidence source for explicit delayed-label and verification-bias behaviour.",
             "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact, prevented loss or staffing estimates.",
