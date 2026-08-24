@@ -67,6 +67,13 @@ def _where(lo: int, hi: int) -> str:
     return f"step >= {int(lo)} AND step <= {int(hi)}"
 
 
+def _bootstrap_seed(cycle_id: int, profile: str, block_steps: int) -> int:
+    seed = PROMOTION_CONFIG.seed + 100 * int(cycle_id) + PROFILE_SEED_OFFSET[profile]
+    if int(block_steps) != PROMOTION_CONFIG.block_steps:
+        seed += 1000 * int(block_steps)
+    return int(seed)
+
+
 def _fit_cycle_bundle(train, calibration, policy):
     features = FEATURE_SETS["transaction_plus_relational"]
     model = fit_lightgbm(train[features], train.is_fraud, n_estimators=250)
@@ -139,12 +146,7 @@ def _promotion_row(
         block_steps=int(block_steps),
         n_bootstrap=PROMOTION_CONFIG.n_bootstrap,
         tail_alpha=tail_alpha,
-        seed=(
-            PROMOTION_CONFIG.seed
-            + 1000 * int(block_steps)
-            + 100 * cycle.cycle
-            + PROFILE_SEED_OFFSET[profile]
-        ),
+        seed=_bootstrap_seed(cycle.cycle, profile, block_steps),
     )
     decision = promotion_decision(
         profile,
@@ -165,6 +167,7 @@ def _promotion_row(
         "profile": profile,
         "routing_contract": "seen_so_far_backlog",
         "block_steps": int(block_steps),
+        "bootstrap_seed": _bootstrap_seed(cycle.cycle, profile, block_steps),
         "test_step_min": int(cycle.test_step_min),
         "test_step_max": int(cycle.test_step_max),
         "incumbent_alpha": float(incumbent_profile.alpha),
@@ -220,7 +223,11 @@ def _retrospective_comparison(causal_5: pd.DataFrame, reference_path: Path) -> p
         "lcb_fraud_value_recall",
     ]
     reference = reference[columns].rename(
-        columns={column: f"retrospective_{column}" for column in columns if column not in {"cycle", "profile"}}
+        columns={
+            column: f"retrospective_{column}"
+            for column in columns
+            if column not in {"cycle", "profile"}
+        }
     )
     causal = causal_5[
         [
@@ -369,20 +376,34 @@ def main() -> None:
         "reference_capacity_alerts_per_10k": REFERENCE_CAPACITY,
         "block_steps": list(DEFAULT_BLOCK_STEPS),
         "official_gate_block_steps": PROMOTION_CONFIG.block_steps,
+        "official_gate_seed_rule": "v1.9 seed + 100*cycle + profile offset",
+        "sensitivity_seed_rule": "official seed plus 1000*block_steps for non-5-step runs",
         "bootstrap_replicates_per_comparison": PROMOTION_CONFIG.n_bootstrap,
         "family_tests_per_block_length": PROMOTION_FAMILY_TESTS,
         "family_alpha": PROMOTION_CONFIG.family_alpha,
         "bonferroni_one_sided_tail_alpha": tail_alpha,
         "minimum_primary_gain": PROMOTION_CONFIG.min_primary_gain,
-        "noninferiority_margin": PROMOTION_CONFIG.recall_noninferiority_margin,
+        "noninferiority_margins": {
+            "precision": PROMOTION_CONFIG.precision_noninferiority_margin,
+            "fraud_recall": PROMOTION_CONFIG.recall_noninferiority_margin,
+            "fraud_value_recall": PROMOTION_CONFIG.value_recall_noninferiority_margin,
+        },
         "causal_5_step_decisions": causal_5[
-            ["cycle", "profile", "decision", "primary_metric", "primary_point_delta", "primary_lower_bound"]
+            [
+                "cycle",
+                "profile",
+                "decision",
+                "primary_metric",
+                "primary_point_delta",
+                "primary_lower_bound",
+            ]
         ].to_dict("records"),
         "dependence_sensitivity": sensitivity.to_dict("records"),
         "retrospective_decision_changes": comparison.loc[comparison.decision_changed].to_dict("records"),
         "runtime_seconds": float(time.time() - started),
         "interpretation_boundaries": [
             "v1.12 changes the evaluation queue contract, not the pre-declared +2 pp gain threshold, -2 pp guardrails, family-wise alpha or 5-step official block length.",
+            "The official 5-step bootstrap uses the same deterministic seed rule as v1.9 so the queue contract is the intended methodological change.",
             "The incumbent and candidate queues use only transactions observed up to each PaySim step; later-step scores cannot affect earlier review decisions.",
             "The paired block intervals resample realised per-step outcomes conditional on the observed frozen causal queues. They do not refit models or reconstruct alternative queues inside each bootstrap replicate.",
             "The 1/3/5/10-step set is a dependence sensitivity audit; the official gate remains the pre-declared 5-step rule.",
