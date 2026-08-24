@@ -43,13 +43,35 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Restore canonical PaySim cache
+        id: paysim-cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw/paysim
+          key: paysim-parquet-canonical-6362620-8213-step1-743-v1
       - name: Download canonical PaySim parquet shards
+        if: steps.paysim-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p data/raw/paysim
-          curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/0.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/0.parquet'
-          curl --fail --location --retry 5 --retry-all-errors -o data/raw/paysim/1.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet'
+          download() {
+            local out="$1"
+            local url="$2"
+            curl --fail --location \
+              --connect-timeout 30 --max-time 600 \
+              --speed-limit 32768 --speed-time 60 \
+              --retry 8 --retry-delay 2 --retry-all-errors \
+              -o "$out" "$url"
+          }
+          download data/raw/paysim/0.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/0.parquet' &
+          pid0=$!
+          download data/raw/paysim/1.parquet 'https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet' &
+          pid1=$!
+          wait "$pid0"
+          wait "$pid1"
+          test -s data/raw/paysim/0.parquet
+          test -s data/raw/paysim/1.parquet
       - name: Run as-of recalibration audit
         run: |
           python scripts/run_paysim_asof_recalibration.py --parquet-glob 'data/raw/paysim/*.parquet' --out results/paysim_asof_recalibration
