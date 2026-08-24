@@ -1,0 +1,118 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "outer_split": {
+    "train_cut": 446,
+    "future_cut": 595
+  },
+  "validation_stage_split": {
+    "calibration_fraction": 0.5,
+    "calibration_step_min": 446,
+    "calibration_step_max": 519,
+    "policy_step_min": 520,
+    "policy_step_max": 594,
+    "policy_cut": 520
+  },
+  "model": "transaction_plus_relational_fixed_before_stage_separation",
+  "selection_capacity_alerts_per_10k": 50,
+  "alpha_grid": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "policy_selection_windows": 3,
+  "selected_profiles": [
+    {
+      "profile": "case_first",
+      "alpha": 0.25,
+      "amount_scale": 70669.965,
+      "min_recall": 0.25390625,
+      "min_fraud_value_recall": 0.7235520075313681,
+      "min_balanced_hmean": 0.38220331947037106
+    },
+    {
+      "profile": "balanced",
+      "alpha": 0.25,
+      "amount_scale": 70669.965,
+      "min_recall": 0.25390625,
+      "min_fraud_value_recall": 0.7235520075313681,
+      "min_balanced_hmean": 0.38220331947037106
+    },
+    {
+      "profile": "value_first",
+      "alpha": 0.25,
+      "amount_scale": 70669.965,
+      "min_recall": 0.25390625,
+      "min_fraud_value_recall": 0.7235520075313681,
+      "min_balanced_hmean": 0.38220331947037106
+    }
+  ],
+  "future_reference_50_per_10k": {
+    "case_first": {
+      "alpha": 0.25,
+      "precision": 0.6158833063209076,
+      "fraud_recall": 0.22974607013301088,
+      "fraud_value_recall": 0.7766583730925302,
+      "legitimate_alerts_per_10k": 19.43801978249102
+    },
+    "balanced": {
+      "alpha": 0.25,
+      "precision": 0.6158833063209076,
+      "fraud_recall": 0.22974607013301088,
+      "fraud_value_recall": 0.7766583730925302,
+      "legitimate_alerts_per_10k": 19.43801978249102
+    },
+    "value_first": {
+      "alpha": 0.25,
+      "precision": 0.6158833063209076,
+      "fraud_recall": 0.22974607013301088,
+      "fraud_value_recall": 0.7766583730925302,
+      "legitimate_alerts_per_10k": 19.43801978249102
+    }
+  },
+  "probability_stage_diagnostics": [
+    {
+      "stage": "calibration",
+      "n": 68033,
+      "fraud_n": 762,
+      "fraud_rate": 0.011200446841973749,
+      "mean_predicted_probability": 0.011249160274383522,
+      "brier": 0.0076047676218766735,
+      "pr_auc": 0.469669755548773
+    },
+    {
+      "stage": "policy_selection",
+      "n": 160070,
+      "fraud_n": 790,
+      "fraud_rate": 0.004935340788405073,
+      "mean_predicted_probability": 0.016622282795343144,
+      "brier": 0.00610639586880798,
+      "pr_auc": 0.2673461863507272
+    },
+    {
+      "stage": "future_test",
+      "n": 123580,
+      "fraud_n": 1654,
+      "fraud_rate": 0.01338404272536009,
+      "mean_predicted_probability": 0.025326127413150764,
+      "brier": 0.012325557830941705,
+      "pr_auc": 0.3497460054908634
+    }
+  ],
+  "runtime_seconds": 68.2225546836853,
+  "interpretation_boundaries": [
+    "The predictive feature family is fixed before this experiment; v1.7 tests calibration-versus-routing separation, not feature-family selection.",
+    "Only steps 446-519 fit the probability calibrator under the canonical 50/50 validation-stage split.",
+    "Only later validation steps 520-594 select routing alpha and its worst-window robustness objective.",
+    "Future steps 595-743 evaluate the frozen calibrator and routing policy; future labels never select alpha.",
+    "The amount scale is fitted on policy-selection amounts only and frozen for future routing.",
+    "PaySim is synthetic mobile-money data; results are benchmark evidence rather than production impact, prevented loss or staffing estimates."
+  ]
+}
