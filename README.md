@@ -9,7 +9,7 @@ The repository has two evidence layers:
 
 Neither source is Moniepoint production data. No result below is a production impact, prevented-loss or staffing claim.
 
-## v1.7 result snapshot
+## v1.8 result snapshot
 
 ### Controlled 120k stress tests
 
@@ -23,11 +23,13 @@ Neither source is Moniepoint production data. No result below is a production im
 
 GitHub Actions verifies **6,362,620 transactions, 8,213 fraud cases and steps 1--743**, materialises strict prior-step DuckDB features, and keeps the old/new-balance model as a simulator-mechanics sensitivity only. The locked balance-free reference remains `transaction_plus_relational` with future PR-AUC about **0.350**.
 
+v1.8 adds a three-cycle rolling-origin audit. It compares the frozen v1.7 model/calibrator/routing policy with an as-of refresh that refits on expanding history, recalibrates on a separate recent window and reselects routing alpha only on the immediately preceding policy window.
+
 ## v1.7 lifecycle contract: separate calibration from routing selection
 
-v1.7 closes a methodological boundary left explicit in v1.6. The same validation rows no longer both fit probability calibration and choose Fraud Ops routing policy.
+v1.7 closed a methodological boundary left explicit in v1.6. The same validation rows no longer both fit probability calibration and choose Fraud Ops routing policy.
 
-The ordered evidence path is now:
+The ordered evidence path is:
 
 1. **model training:** steps 1--445;
 2. **probability calibration only:** steps 446--519;
@@ -44,15 +46,35 @@ The split is determined only from time steps; labels and performance cannot move
 
 The early calibration stage is well matched in mean risk, but the frozen calibrator materially over-predicts in later periods. **Absolute probability calibration is temporally unstable even though rank-based routing remains useful.**
 
+## v1.8 rolling refresh: recalibration is not automatically safer
+
+The rolling schedule keeps the v1.7 stage lengths fixed and moves the test origin forward:
+
+| Cycle | Model training | Calibration | Policy selection | Test |
+|---:|---|---|---|---|
+| 1 | 1--445 | 446--519 | 520--594 | 595--644 |
+| 2 | 1--495 | 496--569 | 570--644 | 645--694 |
+| 3 | 1--545 | 546--619 | 620--694 | 695--743 |
+
+Cycle 2 shows why recalibration can help: actual fraud prevalence is **0.818%**, the frozen v1.7 calibrator predicts **2.495%** mean risk, while the refreshed calibrator predicts **1.058%** and lowers Brier loss from **0.00957 to 0.00665**.
+
+Cycle 3 shows the opposite failure mode. Fraud prevalence jumps to **3.863%**; the refreshed calibrator predicts only **1.152%**, so Brier loss worsens from **0.02561 frozen to 0.03015 refreshed**, even though PR-AUC is slightly higher (**0.5272 to 0.5331**). A recent calibrator can still lag a sharp base-rate change.
+
+The default robust `balanced` queue keeps **alpha=0.25 in every cycle**. At 50 reviews/10k, refreshed routing has the same precision and case recall as frozen v1.7 in all three test windows; value recall is identical except for a small **81.74% to 81.54%** decline in cycle 2. This is evidence that calibration and top-k routing must be monitored as different contracts.
+
+A separately governed value-first profile does change. In cycle 3, the preceding policy window selects **alpha=1.0**; on steps 695--743 it raises fraud-value recall from **40.76% to 60.95%** at the same **100% precision and 12.77% case recall**. The preceding cycle slightly worsens, so this is not promoted to a new default.
+
+PaySim has no fraud-label maturity or investigation-completion timestamp. Later rolling cycles may use labels from completed earlier periods, so v1.8 is an **as-of upper-bound under labels being available by the next refresh**, not a production delayed-label result. See `PAYSIM_ROLLING_REFRESH.md` for the complete contract and results.
+
 ## Routing policy remains stable under the stricter split
 
 Routing uses the pre-specified family
 
 `priority = P(fraud) × (amount / policy_median_amount)^alpha`
 
-for `alpha ∈ {0, 0.25, 0.5, 0.75, 1}`. Only policy-selection steps 520--594 choose alpha, using three contiguous windows and worst-window objectives at exact **50 reviews per 10,000 transactions**.
+for `alpha ∈ {0, 0.25, 0.5, 0.75, 1}`. Only policy-selection steps 520--594 choose alpha in v1.7, using three contiguous windows and worst-window objectives at exact **50 reviews per 10,000 transactions**.
 
-All declared case-first, balanced and value-first objectives still choose **alpha=0.25**.
+All declared case-first, balanced and value-first objectives select **alpha=0.25** in the initial lifecycle. v1.8 then tests whether those choices change when the origin moves forward.
 
 | Alpha | Worst policy-window case recall | Worst value recall | Worst balanced H-mean |
 |---:|---:|---:|---:|
@@ -62,11 +84,11 @@ All declared case-first, balanced and value-first objectives still choose **alph
 | 0.75 | 25.00% | 72.05% | 0.3775 |
 | 1.00 | 24.22% | 72.05% | 0.3678 |
 
-So the alpha=0.25 compromise is not an artefact of reusing calibrator-fitting rows for policy tuning.
+So the alpha=0.25 initial compromise is not an artefact of reusing calibrator-fitting rows for policy tuning.
 
 ## Untouched future exact-capacity result
 
-The frozen alpha=0.25 routing policy gives:
+The frozen v1.7 alpha=0.25 routing policy gives across steps 595--743:
 
 | Reviews / 10k | Precision | Fraud-case recall | Fraud-value recall |
 |---:|---:|---:|---:|
@@ -77,7 +99,7 @@ The frozen alpha=0.25 routing policy gives:
 
 These figures are almost unchanged from v1.6 despite the stricter lifecycle split. That is evidence of **routing robustness**, not a claim that the probability estimates themselves are stable.
 
-At 50 reviews/10k, future-window fraud-value recall remains **75.45% → 81.74% → 40.76%**. In the final high-fraud window every admitted case is fraud, yet case recall is only **12.77%**: analyst capacity, not false-positive ranking, is the limiting factor.
+At 50 reviews/10k, frozen future-window fraud-value recall is **75.45% → 81.74% → 40.76%**. In the final high-fraud window every admitted case is fraud, yet case recall is only **12.77%**: analyst capacity, not false-positive ranking, is the limiting factor.
 
 ## Exact-capacity routing, not brittle scalar thresholds
 
@@ -98,11 +120,12 @@ transaction
    -> calibration-only temporal stage
    -> policy-selection-only temporal stage
    -> exact-capacity alpha-weighted routing
-   -> analyst outcome / mature fraud label
-   -> as-of retraining + calibration / capacity monitoring
+   -> completed prior period
+   -> as-of model/calibration/policy refresh
+   -> next untouched test period
 ```
 
-The controlled 120k stream also retains a separate anomaly/exploration lane for future-only attacks.
+The controlled 120k stream retains a separate anomaly/exploration lane for future-only attacks and remains the source of explicit delayed-label evidence.
 
 ## Reproducibility controls
 
@@ -111,7 +134,8 @@ The controlled 120k stream also retains a separate anomaly/exploration lane for 
 - Full PaySim features use strict prior-step DuckDB windows.
 - Stable non-label event keys make loading and exact-capacity tie-breaking deterministic.
 - Feature-family selection, calibration, routing-policy selection and future evaluation have explicit temporal boundaries.
-- Full PaySim benchmark, monitoring, routing-profile, routing-robustness and stage-separation workflows run in GitHub Actions; raw PaySim rows are not committed.
+- Rolling refresh boundaries are time-only and checked for strict ordering and expanding-history behaviour in unit tests.
+- Full PaySim benchmark, monitoring, routing-profile, routing-robustness, stage-separation and rolling-refresh workflows run in GitHub Actions; raw PaySim rows are not committed.
 
 ## Run
 
@@ -130,6 +154,7 @@ uvicorn fraud_decisioning.api:app --app-dir src --reload
 - `PAYSIM_ROUTING_PROFILES.md` — validation-selected probability/value routing compromise.
 - `PAYSIM_ROUTING_ROBUSTNESS.md` — worst-window routing robustness audit.
 - `PAYSIM_STAGE_SEPARATION.md` — v1.7 calibration-versus-policy temporal separation.
+- `PAYSIM_ROLLING_REFRESH.md` — v1.8 frozen-versus-refresh rolling-origin audit.
 - `APPLICATION_NOTES.md` — safe CV/interview wording.
 - `DATA_PROVENANCE.md` — data-source and claim boundaries.
 - `TAKE_HOME_WALKTHROUGH.md` — SQL/Python/case-study preparation.
