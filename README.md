@@ -9,7 +9,7 @@ The repository has two evidence layers:
 
 Neither source is Moniepoint production data. No result below is a production impact, prevented-loss or staffing claim.
 
-## v1.7 result snapshot
+## v1.8 result snapshot
 
 ### Controlled 120k stress tests
 
@@ -25,9 +25,7 @@ GitHub Actions verifies **6,362,620 transactions, 8,213 fraud cases and steps 1-
 
 ## v1.7 lifecycle contract: separate calibration from routing selection
 
-v1.7 closes a methodological boundary left explicit in v1.6. The same validation rows no longer both fit probability calibration and choose Fraud Ops routing policy.
-
-The ordered evidence path is now:
+The ordered evidence path is:
 
 1. **model training:** steps 1--445;
 2. **probability calibration only:** steps 446--519;
@@ -42,42 +40,32 @@ The split is determined only from time steps; labels and performance cannot move
 | policy selection 520--594 | **0.494%** | **1.662%** | 0.00611 | 0.2673 |
 | future test 595--743 | **1.338%** | **2.533%** | 0.01233 | 0.3497 |
 
-The early calibration stage is well matched in mean risk, but the frozen calibrator materially over-predicts in later periods. **Absolute probability calibration is temporally unstable even though rank-based routing remains useful.**
+Routing remains stable under the stricter split: all declared case-first, balanced and value-first objectives still choose **alpha=0.25** for
 
-## Routing policy remains stable under the stricter split
+`priority = P(fraud) × (amount / policy_median_amount)^alpha`.
 
-Routing uses the pre-specified family
+At exact **50 reviews per 10,000 transactions**, the frozen future policy reaches **61.59% precision, 22.97% fraud-case recall and 77.67% fraud-value recall**.
 
-`priority = P(fraud) × (amount / policy_median_amount)^alpha`
+## v1.8: as-of recalibration under delayed labels
 
-for `alpha ∈ {0, 0.25, 0.5, 0.75, 1}`. Only policy-selection steps 520--594 choose alpha, using three contiguous windows and worst-window objectives at exact **50 reviews per 10,000 transactions**.
+v1.8 freezes the predictive model, **alpha=0.25** routing policy and **50 reviews/10k** capacity. It changes only the calibrator-refresh governance.
 
-All declared case-first, balanced and value-first objectives still choose **alpha=0.25**.
+The initial steps 446--519 calibrator is treated as an already approved deployment artefact. Later refreshes can add post-519 labels only after they have matured before the next future window. The 24h and 168h lags are stress-test scenarios, not estimates of Moniepoint label latency.
 
-| Alpha | Worst policy-window case recall | Worst value recall | Worst balanced H-mean |
-|---:|---:|---:|---:|
-| 0.00 | 23.64% | 64.78% | 0.3464 |
-| **0.25** | **25.39%** | **72.36%** | **0.3822** |
-| 0.50 | 25.39% | 72.05% | 0.3776 |
-| 0.75 | 25.00% | 72.05% | 0.3775 |
-| 1.00 | 24.22% | 72.05% | 0.3678 |
+| Method | Mean 3-window Brier | Worst Brier | Mean absolute log risk-ratio error |
+|---|---:|---:|---:|
+| frozen initial | 0.01578 | **0.02561** | 0.6441 |
+| **as-of 24h** | **0.01519** | 0.02849 | **0.3868** |
+| as-of 168h | 0.01606 | 0.02647 | 0.7496 |
+| instant-history diagnostic | 0.01540 | 0.02905 | 0.5076 |
 
-So the alpha=0.25 compromise is not an artefact of reusing calibrator-fitting rows for policy tuning.
+The important result is **not** “recalibrate more often”. In future window 1, 24h as-of refresh moves mean predicted risk from **2.388% to 1.304%** against **1.301% observed fraud prevalence** and improves Brier from **0.01215 to 0.01043**. In window 2 it improves Brier from **0.00957 to 0.00667**.
 
-## Untouched future exact-capacity result
+But in the abrupt high-fraud window 3, observed prevalence rises to **3.863%** while the 24h recalibrator predicts only **1.603%** on average; Brier worsens from **0.02561 to 0.02849**. The instant-history diagnostic is worse still. Matured labels can therefore make a refresh *less* safe when the next regime changes sharply.
 
-The frozen alpha=0.25 routing policy gives:
+At fixed exact review capacity, routing is far more stable than absolute calibration. Windows 1 and 3 select the same queue under all recalibration methods; only window 2 changes modestly, where the 24h refresh raises case recall from **25.64% to 26.92%** and value recall from **81.74% to 82.21%**.
 
-| Reviews / 10k | Precision | Fraud-case recall | Fraud-value recall |
-|---:|---:|---:|---:|
-| 10 | 100.0% | 7.44% | 33.93% |
-| 25 | 87.66% | 16.32% | 61.39% |
-| 50 | **61.59%** | **22.97%** | **77.67%** |
-| 100 | 43.24% | 32.29% | 87.58% |
-
-These figures are almost unchanged from v1.6 despite the stricter lifecycle split. That is evidence of **routing robustness**, not a claim that the probability estimates themselves are stable.
-
-At 50 reviews/10k, future-window fraud-value recall remains **75.45% → 81.74% → 40.76%**. In the final high-fraud window every admitted case is fraud, yet case recall is only **12.77%**: analyst capacity, not false-positive ranking, is the limiting factor.
+**Governance conclusion:** calibration and queue ranking should be monitored separately. A production analogue should use a mature-label champion/challenger approval gate rather than automatically accepting every newer calibrator.
 
 ## Exact-capacity routing, not brittle scalar thresholds
 
@@ -98,8 +86,9 @@ transaction
    -> calibration-only temporal stage
    -> policy-selection-only temporal stage
    -> exact-capacity alpha-weighted routing
-   -> analyst outcome / mature fraud label
-   -> as-of retraining + calibration / capacity monitoring
+   -> mature-label arrival
+   -> as-of calibration challenger
+   -> calibration / queue monitoring
 ```
 
 The controlled 120k stream also retains a separate anomaly/exploration lane for future-only attacks.
@@ -111,7 +100,8 @@ The controlled 120k stream also retains a separate anomaly/exploration lane for 
 - Full PaySim features use strict prior-step DuckDB windows.
 - Stable non-label event keys make loading and exact-capacity tie-breaking deterministic.
 - Feature-family selection, calibration, routing-policy selection and future evaluation have explicit temporal boundaries.
-- Full PaySim benchmark, monitoring, routing-profile, routing-robustness and stage-separation workflows run in GitHub Actions; raw PaySim rows are not committed.
+- Recalibration refreshes obey explicit label-maturity cutoffs.
+- Full PaySim workflows hard-audit the canonical row/fraud/step counts; the v1.8 workflow also caches the verified public Parquet shards to avoid repeated 320MB downloads.
 
 ## Run
 
@@ -130,6 +120,7 @@ uvicorn fraud_decisioning.api:app --app-dir src --reload
 - `PAYSIM_ROUTING_PROFILES.md` — validation-selected probability/value routing compromise.
 - `PAYSIM_ROUTING_ROBUSTNESS.md` — worst-window routing robustness audit.
 - `PAYSIM_STAGE_SEPARATION.md` — v1.7 calibration-versus-policy temporal separation.
+- `PAYSIM_ASOF_RECALIBRATION.md` — v1.8 mature-label recalibration audit.
 - `APPLICATION_NOTES.md` — safe CV/interview wording.
 - `DATA_PROVENANCE.md` — data-source and claim boundaries.
 - `TAKE_HOME_WALKTHROUGH.md` — SQL/Python/case-study preparation.
