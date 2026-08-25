@@ -1,0 +1,13 @@
+capacity_alerts_per_10k,arrival_cycle,arrival_step_min,arrival_step_max,reference_alerts,candidate_alerts,overlap,jaccard,reference_only,candidate_only,exact_cohort_queue
+10,1,595,644,58,58,58,1.0,0,0,True
+10,2,645,694,53,53,53,1.0,0,0,True
+10,3,695,743,12,12,12,1.0,0,0,True
+25,1,595,644,134,134,134,1.0,0,0,True
+25,2,645,694,144,144,144,1.0,0,0,True
+25,3,695,743,30,30,30,1.0,0,0,True
+50,1,595,644,236,236,236,1.0,0,0,True
+50,2,645,694,321,321,321,1.0,0,0,True
+50,3,695,743,60,60,60,1.0,0,0,True
+100,1,595,644,435,435,435,1.0,0,0,True
+100,2,645,694,689,689,689,1.0,0,0,True
+100,3,695,743,111,111,111,1.0,0,0,True

@@ -1,0 +1,5 @@
+capacity_alerts_per_10k,candidate_cap,reference_alerts,candidate_alerts,final_overlap,final_jaccard,reference_only,candidate_only,exact_final_queue,common_review_step_equal,exact_review_path,divergent_review_steps,first_divergence_step,min_cumulative_jaccard,infinite_refresh_rescored,capped_refresh_rescored,refresh_rescore_reduction,stability_class
+10,5000,123,123,123,1.0,0,0,True,True,True,0,,1.0,151453,10000,0.9339729156900161,PATHWISE_PRESERVED
+25,5000,308,308,308,1.0,0,0,True,True,True,0,,1.0,151226,10000,0.9338738047690212,PATHWISE_PRESERVED
+50,5000,617,617,617,1.0,0,0,True,True,True,0,,1.0,150847,10000,0.9337076640569584,PATHWISE_PRESERVED
+100,5000,1235,1235,1235,1.0,0,0,True,True,True,0,,1.0,150089,10000,0.9333728654331763,PATHWISE_PRESERVED

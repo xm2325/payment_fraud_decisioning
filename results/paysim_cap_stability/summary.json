@@ -1,0 +1,42 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "profile": "balanced",
+  "policy_selection_capacity_alerts_per_10k": 50,
+  "stress_capacity_grid_alerts_per_10k": [
+    10,
+    25,
+    50,
+    100
+  ],
+  "candidate_cap": 5000,
+  "continuous_future_step_min": 595,
+  "continuous_future_step_max": 743,
+  "continuous_future_n": 123580,
+  "refresh_steps": [
+    645,
+    695
+  ],
+  "v1_15_capacity50_reference_reproduced": true,
+  "pathwise_preserved_capacities": [
+    10,
+    25,
+    50,
+    100
+  ],
+  "all_predeclared_capacities_pathwise_preserved": true,
+  "runtime_seconds": 184.791809797287,
+  "interpretation_boundaries": [
+    "The v1.15 5k cap is not retuned. The stress grid is fixed at 10/25/50/100 reviews per 10k and uses the same balanced rolling systems selected at the original 50-review policy capacity.",
+    "PATHWISE_PRESERVED requires the same final reviewed cases and the same review step for every reviewed case; aggregate metric equality alone is insufficient.",
+    "Arrival-cohort comparisons localise any final queue displacement to the three existing rolling test periods rather than creating new post-hoc windows.",
+    "Capacity stress changes analyst entitlement only; it is not a new policy-selection exercise and does not claim that any tested capacity matches a real production operation.",
+    "The 5,000-case cap remains the lowest tested non-zero cap from the predeclared v1.15 grid; this audit does not search below 5,000.",
+    "PaySim is synthetic; dataset steps are not production SLA units, transaction amount is not prevented loss, and upstream rolling refresh retains the as-of label-availability assumption."
+  ]
+}
