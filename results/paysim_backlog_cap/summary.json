@@ -1,0 +1,48 @@
+{
+  "audit": {
+    "n": 6362620,
+    "fraud_n": 8213,
+    "step_min": 1,
+    "step_max": 743,
+    "fraud_rate": 0.001290820448180152
+  },
+  "profile": "balanced",
+  "reference_capacity_alerts_per_10k": 50,
+  "continuous_future_step_min": 595,
+  "continuous_future_step_max": 743,
+  "continuous_future_n": 123580,
+  "continuous_final_review_entitlement": 617,
+  "refresh_steps": [
+    645,
+    695
+  ],
+  "cap_grid": [
+    "0",
+    "5000",
+    "10000",
+    "25000",
+    "50000",
+    "100000",
+    "infinite"
+  ],
+  "detection_noninferiority_margin": 0.02,
+  "workload_reduction_target": 0.5,
+  "v1_13_infinite_reference_reproduced": true,
+  "operational_candidate_caps": [
+    "5000",
+    "10000",
+    "25000"
+  ],
+  "runtime_seconds": 179.70392227172852,
+  "interpretation_boundaries": [
+    "The bounded backlog evicts only seen-but-unreviewed cases using the current policy score; fraud labels do not drive eviction or queue selection.",
+    "Newly earned analyst capacity is allocated before the pending-memory cap is enforced, so a new arrival can be reviewed even when the retained backlog was full before that step.",
+    "When the pool exceeds its cap, the lowest current-score cases are evicted; equal-score eviction preserves the same deterministic event-key priority used by review selection.",
+    "At each model refresh, every surviving pending case is rescored by the newly released system. The cap therefore creates a hard upper bound on refresh-time rescore volume per boundary.",
+    "All caps use the same balanced rolling systems, continuous 50 reviews/10k entitlement and rescore-on-refresh policy. The only changed control is retained pending-pool size.",
+    "The predeclared screen is the same as v1.14: each detection metric may decline by at most 2 percentage points versus infinite backlog and total refresh rescoring must fall by at least 50%.",
+    "operational_candidate is a deterministic engineering screen, not statistical evidence or a production recommendation.",
+    "The infinite cap must reproduce the v1.13 rescore_pending reference when that main-branch file is available.",
+    "PaySim is synthetic; dataset steps are not production SLA units, transaction amount is not prevented loss, and upstream rolling refresh retains the as-of label-availability assumption."
+  ]
+}
